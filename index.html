@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LawManerPro - Legal Practice Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            colors: {
+              // Mantendo definições base para compatibilidade, os overrides visuais estão no CSS abaixo
+              primary: {
+                50: '#fafafa',
+                100: '#f5f5f5',
+                200: '#e5e5e5',
+                300: '#d4d4d4',
+                400: '#a3a3a3',
+                500: '#737373',
+                600: '#131313',
+                700: '#000000',
+                800: '#262626',
+                900: '#171717',
+                950: '#0a0a0a',
+              },
+              blue: {
+                50: '#fafafa',
+                100: '#f5f5f5',
+                200: '#e5e5e5',
+                300: '#d4d4d4',
+                400: '#a3a3a3',
+                500: '#737373',
+                600: '#131313', 
+                700: '#000000', 
+                800: '#262626',
+                900: '#171717', 
+                950: '#0a0a0a',
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+      }
+      /* Custom scrollbar for cleaner UI */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background:  #e9e3d6; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #D4AF37; /* Gold Scrollbar */
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #f3f3f4; 
+      }
+
+      /* --- BLACK & GOLD THEME OVERRIDES --- */
+
+      /* 1. Header e Botões Principais (Preto Fundo + Dourado Texto) */
+      .bg-blue-600, .bg-primary-600 {
+        background-color: #131313 !important;
+        color: #D4AF37 !important;
+        border-color: #333 !important;
+      }
+
+      /* Hover states */
+      .hover\:bg-blue-700:hover {
+        background-color:#e9e3d6 !important;
+        border-color: #D4AF37 !important;
+      }
+
+      /* 2. Ícones e Textos de Destaque (Dourado Puro) */
+      .text-blue-600, .text-blue-500, .text-primary-600, .text-indigo-600 {
+        color: #D4AF37 !important;
+      }
+      
+      /* Ícones SVG dentro de elementos */
+      .text-blue-600 svg, .text-blue-500 svg {
+        color: #D4AF37 !important;
+      }
+
+      /* 3. Sidebar (Preto Profundo) */
+      .bg-blue-900 {
+        background-color: #050505 !important;
+        border-right: 1px solid #222 !important;
+      }
+      
+      /* Item Ativo na Sidebar */
+      .bg-blue-700 {
+        background-color: #1a1a1a !important;
+        border-left: 3px solid #D4AF37 !important;
+        color: #D4AF37 !important;
+      }
+      .bg-blue-700 .text-white {
+        color: #D4AF37 !important;
+      }
+
+      /* Texto na Sidebar */
+      .bg-blue-900 .text-blue-100, 
+      .bg-blue-900 .text-blue-200, 
+      .bg-blue-900 .text-blue-300 {
+        color: #e0d0a0 !important; /* Dourado pálido/Creme */
+      }
+      .bg-blue-900 .text-white {
+         color: #fff !important;
+      }
+
+      /* 4. Elementos Claros (Tons de Creme/Ouro Claro) */
+      /* Fundos claros que eram azuis agora são creme suave */
+      .bg-blue-50, .bg-primary-50, .bg-indigo-50 {
+        background-color: #fffbf0 !important; 
+      }
+      .bg-blue-100 {
+        background-color: #fceeb5 !important; /* Ouro claro */
+        color: #5c490a !important;
+      }
+      
+      /* Texto escuro que era azul agora é preto ou dourado escuro */
+      .text-blue-900, .text-blue-800 {
+         color: #131313 !important;
+      }
+      
+      /* 5. Bordas e Detalhes */
+      .border-blue-500, .border-blue-200 {
+        border-color: #e6c86e !important;
+      }
+      
+      /* Focus rings */
+      .focus\:ring-blue-500:focus {
+        --tw-ring-color: #D4AF37 !important;
+      }
+
+      /* Forçar ícones brancos dentro de áreas pretas a serem dourados se desejado, 
+         ou manter branco para contraste. O pedido foi "letras para dourado". */
+      .bg-blue-600 .text-white {
+        color: #D4AF37 !important;
+      }
+      .bg-blue-600 .text-blue-100 {
+        color: #f3e5ab !important;
+      }
+
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
+    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.45.0",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.1"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-slate-50 text-slate-900 antialiased">
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
