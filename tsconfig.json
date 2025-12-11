@@ -14,7 +14,10 @@
       "node"
     ],
     "moduleResolution": "bundler",
+<<<<<<< HEAD
     "resolveJsonModule": true,
+=======
+>>>>>>> 4ce44f2df12dd974ba872b84461569ba05f4ef9c
     "isolatedModules": true,
     "moduleDetection": "force",
     "allowJs": true,
@@ -24,10 +27,15 @@
         "./*"
       ]
     },
+<<<<<<< HEAD
     "noEmit": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "strict": false
+=======
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+>>>>>>> 4ce44f2df12dd974ba872b84461569ba05f4ef9c
   }
 }
