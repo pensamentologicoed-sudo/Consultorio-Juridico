@@ -13,7 +13,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  
+
   // New State Fields
   const [cpf, setCpf] = useState('');
   const [oab, setOab] = useState('');
@@ -28,7 +28,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     e.preventDefault();
     setIsLoading(true);
     setErrorMsg('');
-    
+
     const cleanEmail = email.trim();
     const cleanPassword = password.trim();
 
@@ -73,25 +73,25 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      
+
       <div className={`w-full ${isSignUp ? 'max-w-2xl' : 'max-w-md'} bg-white rounded-2xl shadow-xl overflow-hidden transition-all duration-500`}>
-        
+
         {/* Top Header Section - Blue Background */}
         <div className="bg-blue-600 px-8 pt-10 pb-6 text-center">
           <div className="flex justify-center mb-4">
-             <div className="bg-white p-4 rounded-full shadow-md">
-               <Briefcase className="h-8 w-8 text-blue-600" />
-             </div>
+            <div className="bg-white p-4 rounded-full shadow-md">
+              <Briefcase className="h-8 w-8 text-blue-600" />
+            </div>
           </div>
           <h2 className="text-3xl font-bold text-white tracking-tight mb-1">
             Consultoria Jurídica
           </h2>
-          <h3 className= "text-blue-100 text-sm"> Dr. Moisés Figueredo </h3>     
+          <h3 className="text-blue-100 text-sm"> Dr. Samuel Santos </h3>
         </div>
 
         {/* Tabs */}
         <div className="flex border-b border-gray-100">
-          <button 
+          <button
             type="button"
             onClick={() => { setIsSignUp(false); setErrorMsg(''); }}
             className={`w-1/2 py-4 text-sm font-semibold transition-colors relative ${!isSignUp ? 'text-blue-600 bg-blue-50/50' : 'text-gray-500 hover:text-gray-700'}`}
@@ -101,7 +101,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600" />
             )}
           </button>
-          <button 
+          <button
             type="button"
             onClick={() => { setIsSignUp(true); setErrorMsg(''); }}
             className={`w-1/2 py-4 text-sm font-semibold transition-colors relative ${isSignUp ? 'text-blue-600 bg-blue-50/50' : 'text-gray-500 hover:text-gray-700'}`}
@@ -116,16 +116,16 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         {/* Form Section */}
         <div className="px-8 py-8">
           {errorMsg && (
-             <div className={`mb-4 p-3 rounded-lg text-sm ${errorMsg.includes('Conta criada') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-               {errorMsg}
-             </div>
+            <div className={`mb-4 p-3 rounded-lg text-sm ${errorMsg.includes('Conta criada') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+              {errorMsg}
+            </div>
           )}
 
           <form className="space-y-4" onSubmit={handleSubmit}>
-            
+
             {isSignUp && (
               <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-4">
-                
+
                 {/* Name and Role Row */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
@@ -236,8 +236,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 disabled={isLoading}
                 className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-70 transition-all transform hover:-translate-y-0.5"
               >
-                {isLoading 
-                  ? (isSignUp ? 'Criando Conta...' : 'Entrando...') 
+                {isLoading
+                  ? (isSignUp ? 'Criando Conta...' : 'Entrando...')
                   : (isSignUp ? 'Criar Conta' : 'Entrar')
                 }
               </button>
@@ -245,9 +245,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           </form>
 
           <div className="mt-8 text-center">
-             <p className="text-xs text-gray-400">
-               Ao continuar, você concorda com nossos Termos de Serviço.
-             </p>
+            <p className="text-xs text-gray-400">
+              Ao continuar, você concorda com nossos Termos de Serviço.
+            </p>
           </div>
         </div>
       </div>

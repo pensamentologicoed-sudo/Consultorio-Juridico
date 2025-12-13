@@ -19,6 +19,22 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, '.'),
       },
       extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json']
-    }
+    },
+    build: {
+      target: 'es2015',
+      minify: 'terser',
+      cssMinify: true,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'react-vendor': ['react', 'react-dom'],
+            'ui-vendor': ['lucide-react', 'recharts'],
+            'supabase-vendor': ['@supabase/supabase-js'],
+            'ai-vendor': ['@google/genai'],
+          },
+        },
+      },
+      chunkSizeWarningLimit: 600,
+    },
   };
 });
