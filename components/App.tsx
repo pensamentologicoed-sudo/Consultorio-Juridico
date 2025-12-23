@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useCallback } from 'react';
 import Layout from './Layout';
 import Login from './Login';
 import Dashboard from './Dashboard';
@@ -9,25 +10,35 @@ import Documentos from './Documentos';
 import Relatorios from './Relatorios';
 import Contrapartes from './Contrapartes';
 import Trash from './Trash';
+import AiAssistant from './AiAssistant';
+import DeadlineTracker from './DeadlineTracker';
+import Settings from './Settings';
 import { useAuth } from '../hooks/useAuth';
 import { User, UserRole } from '../types';
-import { Loader2, PlusCircle, Users, Search, X, Trash2, CheckCircle2 } from 'lucide-react';
+import { Loader2, PlusCircle, Users, Search, X } from 'lucide-react';
 
-// New Clients View Imports
-import { getClients, Client } from '../services/api';
+// Specialized Hook
+import { useClients } from '../hooks/useClients';
+import { SystemSetup } from './SystemSetup';
 import ClientList from './ClientList';
 import { ClientForm } from './ClientForm';
 import TrashList from './TrashList';
+import { Client } from '../types';
 
 const App: React.FC = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentView, setCurrentView] = useState('dashboard');
+  const [targetCaseId, setTargetCaseId] = useState<string | null>(null);
   
-  // Clients View State
+  const { 
+    clients, 
+    fetchClients, 
+    loading: clientsLoading, 
+    error: clientsError 
+  } = useClients();
+
   const [activeTab, setActiveTab] = useState<'active' | 'trash'>('active');
-  const [clients, setClients] = useState<Client[]>([]);
-  const [clientsLoading, setClientsLoading] = useState(false);
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
@@ -40,22 +51,22 @@ const App: React.FC = () => {
     }
   }, [user]);
 
-  // Load clients effect
   useEffect(() => {
     if (currentUser && currentView === 'clients' && activeTab === 'active') {
-      loadClients();
+      fetchClients(clientSearchTerm);
     }
-  }, [currentUser, currentView, activeTab, clientSearchTerm]);
+  }, [currentUser, currentView, activeTab, clientSearchTerm, fetchClients]);
 
   const mapAndSetUser = (sbUser: any) => {
     const metadata = sbUser.user_metadata || {};
-    const displayName = metadata.display_name || metadata.name || metadata.full_name || 'User';
+    const displayName = metadata.display_name || metadata.name || metadata.full_name || 'Usuário';
     setCurrentUser({
       id: sbUser.id,
       email: sbUser.email || '',
       name: displayName,
       role: (metadata.role as UserRole) || UserRole.LAWYER,
       avatarUrl: metadata.avatarUrl || '',
+      logoUrl: metadata.logoUrl || '',
       cpf: metadata.cpf,
       oab: metadata.oab,
       phone: metadata.phone
@@ -67,17 +78,10 @@ const App: React.FC = () => {
     setCurrentUser(null);
   };
 
-  // --- Clients View Logic ---
-  const loadClients = async () => {
-    setClientsLoading(true);
-    try {
-      const data = await getClients(clientSearchTerm);
-      setClients(data);
-    } catch (error) {
-      console.error('Erro ao carregar clientes:', error);
-    } finally {
-      setClientsLoading(false);
-    }
+  const handleNavigate = (view: string, caseId?: string) => {
+    if (caseId) setTargetCaseId(caseId);
+    else setTargetCaseId(null);
+    setCurrentView(view);
   };
 
   const openClientModal = (client?: Client) => {
@@ -91,23 +95,21 @@ const App: React.FC = () => {
   };
 
   const handleClientSave = () => {
-    loadClients();
+    fetchClients(clientSearchTerm);
     closeClientModal();
   };
 
-  const handleClientDelete = () => {
-    loadClients();
-    if (isClientModalOpen) closeClientModal();
-  };
-
-  const handleRestore = () => {
-    if (activeTab === 'active') loadClients();
+  const handleRestoreAny = (tableName: string) => {
+    if (tableName === 'clients') {
+      fetchClients(clientSearchTerm);
+    }
+    // Adicionar outros fetchs conforme necessário para outras tabelas
   };
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <Loader2 className="h-12 w-12 text-[#318CE7] animate-spin" />
+      <div className="min-h-screen bg-[#cfcfcf] flex items-center justify-center">
+        <Loader2 className="h-12 w-12 text-[#D4AF37] animate-spin" />
       </div>
     );
   }
@@ -119,138 +121,125 @@ const App: React.FC = () => {
   const renderView = () => {
     switch(currentView) {
       case 'dashboard':
-        return <Dashboard onNavigate={setCurrentView} />;
+        return <Dashboard onNavigate={handleNavigate} />;
       case 'clients':
         return (
           <div className="space-y-6 animate-in fade-in">
+             {clientsError === 'tabela_missing' && <SystemSetup />}
              <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Gerenciamento de Clientes</h1>
-                  <p className="mt-1 text-sm text-gray-500">Gerencie seus clientes e visualize a lixeira</p>
+                  <h1 className="text-2xl font-bold text-gray-900 uppercase tracking-tight">Gestão de Clientes</h1>
+                  <p className="mt-1 text-sm text-gray-500 font-medium">Administre sua base de clientes e documentos anexos</p>
                </div>
-               
                {activeTab === 'active' && (
                  <button
                     onClick={() => openClientModal()}
-                    className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none shadow-sm transition-colors"
+                    className="inline-flex items-center justify-center px-6 py-3 border border-[#D4AF37]/50 text-[10px] font-black uppercase tracking-widest rounded-xl text-[#D4AF37] bg-[#131313] hover:bg-black focus:outline-none shadow-xl transition-all"
                   >
-                    <PlusCircle className="h-4 w-4 mr-2" />
+                    <PlusCircle className="h-3.5 w-3.5 mr-2" />
                     Novo Cliente
                   </button>
                )}
             </div>
 
-            {/* Tabs */}
-            <div className="bg-white rounded-lg p-1 inline-flex border border-gray-200 shadow-sm">
+            <div className="bg-white rounded-xl p-1.5 inline-flex border border-gray-200 shadow-sm">
               <button
                 onClick={() => setActiveTab('active')}
-                className={`flex items-center px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                  activeTab === 'active' 
-                    ? 'bg-blue-50 text-blue-700 shadow-sm' 
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                className={`flex items-center px-6 py-2.5 text-[9px] font-black uppercase tracking-widest rounded-lg transition-all ${
+                  activeTab === 'active' ? 'bg-[#131313] text-[#D4AF37] shadow-lg' : 'text-gray-400'
                 }`}
               >
-                <CheckCircle2 className="w-4 h-4 mr-2" />
-                Clientes Ativos
-                <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">{clients.length}</span>
+                Ativos ({clients.length})
               </button>
               <button
                 onClick={() => setActiveTab('trash')}
-                className={`flex items-center px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                  activeTab === 'trash' 
-                    ? 'bg-red-50 text-red-700 shadow-sm' 
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                className={`flex items-center px-6 py-2.5 text-[9px] font-black uppercase tracking-widest rounded-lg transition-all ${
+                  activeTab === 'trash' ? 'bg-red-600 text-white shadow-lg' : 'text-gray-400'
                 }`}
               >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Lixeira
+                Arquivados
               </button>
             </div>
 
             {activeTab === 'active' ? (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                 <div className="px-6 py-4 border-b border-blue-500 bg-blue-600 flex items-center justify-between">
+              <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+                 <div className="px-8 py-5 border-b border-[#D4AF37]/20 bg-[#131313] flex items-center justify-between">
                    <div className="flex items-center">
-                      <Users className="h-5 w-5 text-white mr-2" />
-                      <h3 className="font-semibold text-white">Lista de Clientes</h3>
+                      <Users className="h-5 w-5 text-[#D4AF37] mr-3" />
+                      <h3 className="font-bold text-[#D4AF37] text-sm uppercase tracking-widest">Listagem de Clientes</h3>
                    </div>
                    <div className="relative">
-                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                       <input
                         type="text"
-                        placeholder="Buscar..."
+                        placeholder="Pesquisar..."
                         value={clientSearchTerm}
                         onChange={(e) => setClientSearchTerm(e.target.value)}
-                        className="pl-9 pr-4 py-2 text-sm border border-blue-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 w-full sm:w-64 bg-white text-gray-900 placeholder-gray-400"
+                        className="pl-10 pr-4 py-2.5 text-xs border border-[#333] rounded-xl focus:outline-none w-full sm:w-80 bg-white"
                       />
                    </div>
                  </div>
-
                  {clientsLoading ? (
-                    <div className="p-12 text-center text-gray-400">
-                       <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
-                       Carregando...
-                    </div>
-                 ) : clients.length === 0 ? (
-                    <div className="p-12 text-center text-gray-500">Nenhum cliente encontrado.</div>
+                    <div className="p-20 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-[#D4AF37]" /></div>
                  ) : (
-                    <ClientList 
-                      clients={clients} 
-                      onDelete={handleClientDelete}
-                      onEdit={openClientModal}
-                    />
+                    <ClientList clients={clients} onDelete={() => fetchClients(clientSearchTerm)} onEdit={openClientModal} />
                  )}
               </div>
             ) : (
-              <TrashList onRestore={handleRestore} />
-            )}
-
-            {/* Modal */}
-            {isClientModalOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                <div className="fixed inset-0 bg-black/50 transition-opacity" onClick={closeClientModal} />
-                <div className="relative bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                   <div className="flex justify-between items-center p-6 border-b">
-                      <h3 className="text-lg font-medium text-gray-900">
-                        {editingClient ? 'Editar Cliente' : 'Novo Cliente'}
-                      </h3>
-                      <button onClick={closeClientModal} className="text-gray-400 hover:text-gray-500">
-                        <X className="h-6 w-6" />
-                      </button>
-                   </div>
-                   <div className="p-6">
-                      <ClientForm 
-                        client={editingClient}
-                        onSave={handleClientSave} 
-                        onCancel={closeClientModal}
-                        onDelete={editingClient ? handleClientDelete : undefined}
-                        onSubmit={async () => {}} // Backward compat
-                      />
-                   </div>
-                </div>
-              </div>
+              <TrashList onRestore={() => fetchClients(clientSearchTerm)} />
             )}
           </div>
         );
-      case 'cases': return <Processos />;
+      case 'cases': return <Processos initialSelectedCaseId={targetCaseId} onClearTarget={() => setTargetCaseId(null)} />;
       case 'deadlines': return <Prazos />;
-      case 'agenda': return <Agenda />;
+      case 'agenda': return <Agenda onNavigate={handleNavigate} />;
       case 'documents': return <Documentos />;
       case 'reports': return <Relatorios />;
       case 'counterparts': return <Contrapartes />;
-      case 'trash': return <Trash />;
+      case 'trash': return <Trash onRestore={handleRestoreAny} />;
+      case 'ai_assistant': return <AiAssistant />;
+      case 'calculator': return <DeadlineTracker />;
+      case 'settings': return <Settings />;
       default: return <div>Página não encontrada</div>;
     }
   };
 
   return (
     <Layout 
-      currentUser={currentUser} 
+      currentUser={currentUser!} 
       onLogout={handleLogout}
       currentView={currentView}
-      onNavigate={setCurrentView}
+      onNavigate={handleNavigate}
     >
       {renderView()}
+
+      {/* Modal de Cliente movido para o nível Global do Layout para garantir estabilidade de renderização */}
+      {isClientModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity" onClick={closeClientModal} />
+          <div className="relative bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col border border-white/20 animate-in zoom-in-95 duration-200">
+             <div className="flex justify-between items-center p-8 bg-[#131313] border-b border-brand-gold/30">
+                <div>
+                   <h3 className="text-xl font-bold text-brand-gold tracking-tight">
+                     {editingClient ? 'Ajustar Cadastro' : 'Novo Registro de Cliente'}
+                   </h3>
+                   <p className="text-[9px] text-white/40 font-black uppercase tracking-widest mt-1">Identidade Jurídica de Performance</p>
+                </div>
+                <button onClick={closeClientModal} className="text-white/40 hover:text-white transition-all">
+                  <X className="h-6 w-6" />
+                </button>
+             </div>
+             <div className="p-8 overflow-y-auto custom-scrollbar bg-white">
+                <ClientForm 
+                  client={editingClient}
+                  onSave={handleClientSave} 
+                  onCancel={closeClientModal}
+                  onDelete={() => { fetchClients(); closeClientModal(); }}
+                />
+             </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 };

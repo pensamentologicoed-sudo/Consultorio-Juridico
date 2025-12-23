@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from 'react';
 import { supabase, handleSupabaseError } from '../services/supabaseClient';
 import { Client } from '../types';
@@ -9,7 +10,6 @@ export const useClients = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Busca apenas clientes ativos (não excluídos)
   const fetchClients = useCallback(async (searchTerm = '') => {
     setLoading(true);
     setError(null);
@@ -18,7 +18,7 @@ export const useClients = () => {
       let query = supabase
         .from('clients')
         .select('*')
-        .is('deleted_at', null) // Filtra apenas não deletados
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       if (searchTerm) {
@@ -31,25 +31,24 @@ export const useClients = () => {
       
       setClients(data || []);
     } catch (err: any) {
-      if (err.code !== '42P01') { 
-        const errorMessage = handleSupabaseError(err);
-        setError(errorMessage);
+      const errorMessage = handleSupabaseError(err);
+      if (err.code === '42P01' || err.code === 'PGRST204') { 
+         setError("tabela_missing");
+      } else {
+         setError(errorMessage);
       }
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Busca clientes na lixeira
   const fetchDeletedClients = useCallback(async () => {
-    // Note: This relies on simple soft-delete. If using RPC view, this might return empty if table logic changed.
-    // However, keeping it as fallback.
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('clients')
         .select('*')
-        .not('deleted_at', 'is', null) // Filtra apenas deletados
+        .not('deleted_at', 'is', null)
         .order('deleted_at', { ascending: false });
 
       if (error) throw error;
@@ -66,22 +65,40 @@ export const useClients = () => {
     setError(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await (supabase.auth as any).getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      const newId = crypto.randomUUID();
-
       const sanitizedData = {
-        id: newId,
-        ...clientData,
-        email: clientData.email === '' ? null : clientData.email,
-        phone: clientData.phone === '' ? null : clientData.phone,
-        cpf_cnpj: clientData.cpf_cnpj === '' ? null : clientData.cpf_cnpj,
-        address: clientData.address === '' ? null : clientData.address,
+        id: crypto.randomUUID(),
+        name: clientData.name,
+        email: clientData.email || null,
+        phone: clientData.phone,
+        cpf_cnpj: clientData.cpf_cnpj || null,
+        rg: clientData.rg || null,
+        address: clientData.address || null,
+        city: clientData.city || null,
+        state: clientData.state || null,
+        cep: clientData.cep || null,
+        profession: clientData.profession || null,
+        company: clientData.company || null,
+        income_range: clientData.income_range || null,
+        status: clientData.status || 'active',
+        observations: clientData.observations || null,
         created_by: user.id,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        deleted_at: null
+        deleted_at: null,
+        // Documentos
+        identification_doc_path: clientData.identification_doc_path || null,
+        identification_doc_name: clientData.identification_doc_name || null,
+        cpf_doc_path: clientData.cpf_doc_path || null,
+        cpf_doc_name: clientData.cpf_doc_name || null,
+        birth_marriage_doc_path: clientData.birth_marriage_doc_path || null,
+        birth_marriage_doc_name: clientData.birth_marriage_doc_name || null,
+        comprovant_residente_doc_path: clientData.comprovant_residente_doc_path || null,
+        comprovant_residente_doc_name: clientData.comprovant_residente_doc_name || null,
+        other_doc_path: clientData.other_doc_path || null,
+        other_doc_name: clientData.other_doc_name || null
       };
 
       const { data, error: supabaseError } = await supabase
@@ -111,12 +128,32 @@ export const useClients = () => {
 
     try {
       const sanitizedData = {
-        ...clientData,
-        email: clientData.email === '' ? null : clientData.email,
-        phone: clientData.phone === '' ? null : clientData.phone,
-        cpf_cnpj: clientData.cpf_cnpj === '' ? null : clientData.cpf_cnpj,
-        address: clientData.address === '' ? null : clientData.address,
+        name: clientData.name,
+        email: clientData.email || null,
+        phone: clientData.phone,
+        cpf_cnpj: clientData.cpf_cnpj || null,
+        rg: clientData.rg || null,
+        address: clientData.address || null,
+        city: clientData.city || null,
+        state: clientData.state || null,
+        cep: clientData.cep || null,
+        profession: clientData.profession || null,
+        company: clientData.company || null,
+        income_range: clientData.income_range || null,
+        status: clientData.status,
+        observations: clientData.observations || null,
         updated_at: new Date().toISOString(),
+        // Documentos
+        identification_doc_path: clientData.identification_doc_path || null,
+        identification_doc_name: clientData.identification_doc_name || null,
+        cpf_doc_path: clientData.cpf_doc_path || null,
+        cpf_doc_name: clientData.cpf_doc_name || null,
+        birth_marriage_doc_path: clientData.birth_marriage_doc_path || null,
+        birth_marriage_doc_name: clientData.birth_marriage_doc_name || null,
+        comprovant_residente_doc_path: clientData.comprovant_residente_doc_path || null,
+        comprovant_residente_doc_name: clientData.comprovant_residente_doc_name || null,
+        other_doc_path: clientData.other_doc_path || null,
+        other_doc_name: clientData.other_doc_name || null
       };
 
       const { data, error: supabaseError } = await supabase
@@ -141,58 +178,20 @@ export const useClients = () => {
     }
   };
 
-  // Replaced custom implementation with Centralized Service
   const deleteClient = async (id: string) => {
     setLoading(true);
     setError(null);
     try {
       const result = await moveToRecycleBin('clients', id);
-      
       if (!result.success) throw new Error(result.error);
-
-      // Remove from local list immediately for UI responsiveness
       setClients(prev => prev.filter(c => c.id !== id));
-      
       return { error: null };
     } catch (err: any) {
-      let errorMessage = handleSupabaseError(err);
-      setError(errorMessage);
-      return { error: errorMessage };
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const restoreClient = async (id: string) => {
-    setLoading(true);
-    try {
-      // Try generic restore
-      const result = await restoreFromRecycleBin(id, 'clients');
-      if (!result.success) throw new Error(result.error);
-
-      await fetchDeletedClients(); 
-      await fetchClients(); 
-      return { error: null };
-    } catch (err: any) {
+      setError(handleSupabaseError(err));
       return { error: handleSupabaseError(err) };
     } finally {
       setLoading(false);
     }
-  };
-
-  const permanentDeleteClient = async (id: string) => {
-     setLoading(true);
-     try {
-       const success = await permanentDeleteFromRecycleBin(id, 'clients');
-       if(!success) throw new Error("Erro ao excluir permanentemente");
-
-       setDeletedClients(prev => prev.filter(c => c.id !== id));
-       return { error: null };
-     } catch (err: any) {
-        return { error: handleSupabaseError(err) };
-     } finally {
-        setLoading(false);
-     }
   };
 
   return { 
@@ -204,8 +203,6 @@ export const useClients = () => {
     fetchDeletedClients,
     createClient, 
     updateClient, 
-    deleteClient,
-    restoreClient,
-    permanentDeleteClient
+    deleteClient
   };
 };

@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://ruecuoqnbmdwjsuohbpn.supabase.co';
@@ -5,31 +6,45 @@ const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Helper function for error handling
-export const handleSupabaseError = (error: any) => {
-  // Log detalhado para debug (converte objeto para string legível)
-  console.error('🔴 Supabase Error Detalhado:', JSON.stringify(error, null, 2));
+/**
+ * Utilitário para tratar erros do Supabase de forma robusta.
+ * Evita o log de '[object Object]' garantindo que o objeto seja inspecionável.
+ */
+export const handleSupabaseError = (error: any): string => {
+  if (!error) return 'Ocorreu um erro desconhecido.';
   
+  // Log detalhado para o console do desenvolvedor - passa o objeto real para inspeção direta
+  console.group('🔴 Supabase Error Detalhado');
+  console.error('Objeto de Erro:', error);
+  if (typeof error === 'object' && error !== null) {
+    try {
+      console.debug('Inspeção Serializada:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    } catch (e) {}
+  }
+  console.groupEnd();
+
   if (typeof error === 'string') return error;
 
-  if (error?.code) {
-    switch (error.code) {
-      case '23505':
-        return 'Registro duplicado. Já existe um item com este Email, CPF ou identificador.';
-      case '23503':
-        return 'Erro de integridade. Referência inválida a outro registro (ex: Usuário ou Cliente não encontrado).';
-      case '23514':
-        return 'Erro de validação. Um valor inserido não é permitido pelas regras do banco.';
-      case '42501':
-        return 'Permissão negada (RLS). A política de segurança do banco impediu esta ação. Verifique se você tem permissão para alterar este registro.';
+  // Extração inteligente de mensagens baseada nos campos comuns do Supabase
+  const code = error.code || error.status || (error.error && error.error.code);
+  const message = error.message || error.error_description || (error.error && error.error.message) || error.statusText;
+
+  if (code) {
+    switch (String(code)) {
+      case 'PGRST204':
+        return 'Erro de Esquema: Uma coluna não foi encontrada no banco. Verifique o script SQL.';
       case '42P01':
-        return 'Tabela não encontrada no banco de dados. Contate o suporte.';
-      case '23502':
-         return 'Erro de dados: Um campo obrigatório (como ID) estava vazio.';
+        return 'Tabela não encontrada. Configure o banco de dados via SQL Editor.';
+      case '23505':
+        return 'Registro duplicado. Este documento ou registro já existe.';
+      case '42501':
+        return 'Permissão negada (RLS). Verifique as políticas de acesso no Supabase.';
+      case '403':
+        return 'Acesso negado ao Storage. Verifique se o bucket "documents" é público.';
       default:
-        return error.message || 'Erro desconhecido no banco de dados.';
+        return message ? `${message} (Código: ${code})` : `Erro técnico: ${code}`;
     }
   }
   
-  return error?.message || (error && typeof error === 'object' ? 'Ocorreu um erro ao processar. Verifique o console.' : 'Erro desconhecido ao conectar com o servidor.');
+  return message || 'Erro ao processar a requisição de dados.';
 };

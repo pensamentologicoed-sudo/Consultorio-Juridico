@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from 'react';
 import { supabase, handleSupabaseError } from '../services/supabaseClient';
 
@@ -5,11 +6,12 @@ export interface AgendaEvent {
   id: string | number;
   title: string;
   time: string;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD para a interface
   client: string;
   type: 'hearing' | 'meeting' | 'deadline' | 'conference' | 'call';
   location: string;
   created_at?: string;
+  user_id?: string;
 }
 
 export const useAgenda = () => {
@@ -17,34 +19,46 @@ export const useAgenda = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Busca eventos
   const fetchEvents = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      // Tenta buscar do Supabase
       const { data, error: sbError } = await supabase
         .from('agenda_events')
-        .select('*')
-        .order('date', { ascending: true })
-        .order('time', { ascending: true });
+        .select('*');
 
       if (sbError) {
-         // Se a tabela não existir (código 42P01), ignoramos o erro e retornamos lista vazia
-         // para não quebrar a aplicação enquanto a migração não é rodada.
-         if (sbError.code === '42P01' || sbError.message.includes('relation "agenda_events" does not exist')) {
-             console.warn('Tabela de agenda não encontrada. O sistema funcionará sem persistência de agenda por enquanto.');
+         if (sbError.code === '42P01') {
+             setError('tabela_missing');
              return;
          }
          throw sbError;
       }
 
-      setEvents(data || []);
+      // MAPEAMENTO: Traduz campos do Banco (event_date) para a Interface (date)
+      const mappedData = (data || []).map(item => {
+          const rawDate = item.event_date || item.date;
+          const dateObj = rawDate ? new Date(rawDate) : new Date();
+          
+          return {
+              id: item.id,
+              title: item.title,
+              // Formata para YYYY-MM-DD para o calendário
+              date: dateObj.toISOString().split('T')[0],
+              // Extrai o tempo HH:MM
+              time: item.time || dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+              client: item.client || 'N/A',
+              type: item.event_type || item.type || 'meeting',
+              location: item.location || '',
+              created_at: item.created_at
+          };
+      });
+
+      const sortedData = mappedData.sort((a, b) => a.date.localeCompare(b.date));
+      setEvents(sortedData);
     } catch (err: any) {
-      // Ignora erro de cache de schema se for relacionado à tabela inexistente
-      if (err.message && (err.message.includes('schema cache') || err.message.includes('agenda_events'))) {
-         return;
-      }
-      console.error('Erro ao buscar agenda:', err.message);
+      console.error('Erro ao buscar agenda:', err);
+      setError(handleSupabaseError(err));
     } finally {
       setLoading(false);
     }
@@ -53,41 +67,29 @@ export const useAgenda = () => {
   const addEvent = async (event: Omit<AgendaEvent, 'id'>) => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await (supabase.auth as any).getUser();
       
+      // Salva usando os nomes de coluna do banco (event_date, event_type)
       const newEventPayload = {
-        ...event,
-        user_id: user?.id,
+        title: event.title,
+        event_date: `${event.date}T${event.time || '00:00'}:00Z`,
+        event_type: event.type,
+        location: event.location,
+        client_id: null, // Pode ser expandido futuramente
+        created_by: user?.id,
         created_at: new Date().toISOString()
       };
 
-      const { data, error: sbError } = await supabase
+      const { error: sbError } = await supabase
         .from('agenda_events')
-        .insert([newEventPayload])
-        .select()
-        .single();
+        .insert([newEventPayload]);
 
-      if (sbError) {
-        // Fallback local se a tabela não existir
-        if (sbError.code === '42P01' || sbError.message.includes('agenda_events')) {
-            const localEvent = { ...event, id: Date.now() };
-            setEvents(prev => [...prev, localEvent]);
-            return { success: true, data: localEvent };
-        }
-        throw sbError;
-      }
+      if (sbError) throw sbError;
 
-      if (data) {
-        setEvents(prev => [...prev, data]);
-      }
-      return { success: true, data };
+      await fetchEvents();
+      return { success: true };
     } catch (err: any) {
-      // Fallback local em caso de erro de schema
-      if (err.message && (err.message.includes('schema cache') || err.message.includes('agenda_events'))) {
-          const localEvent = { ...event, id: Date.now() };
-          setEvents(prev => [...prev, localEvent]);
-          return { success: true, data: localEvent };
-      }
+      console.error('Erro ao salvar evento:', err);
       return { success: false, error: handleSupabaseError(err) };
     } finally {
       setLoading(false);

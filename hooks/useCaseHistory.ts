@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from 'react';
 import { supabase, handleSupabaseError } from '../services/supabaseClient';
 import { CaseHistoryItem, HistoryType } from '../types';
@@ -22,9 +23,9 @@ export const useCaseHistory = (caseId: string) => {
         .order('created_at', { ascending: false });
 
       if (sbError) {
-        if (sbError.code === '42P01') {
-            // Tabela não existe, retornar vazio sem erro
-            console.warn('Tabela case_history não existe. Modo leitura.');
+        // Ignora erros de tabela inexistente silenciosamente para não quebrar a UX de detalhes do caso
+        if (sbError.code === '42P01' || sbError.code === 'PGRST205') {
+            console.warn('Tabela case_history não encontrada no banco de dados.');
             setHistory([]);
             return;
         }
@@ -42,7 +43,8 @@ export const useCaseHistory = (caseId: string) => {
   const addHistoryItem = async (item: Omit<CaseHistoryItem, 'id' | 'created_at' | 'case_id'>) => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // Fix: Casting supabase.auth to any to bypass outdated TypeScript definitions
+      const { data: { user } } = await (supabase.auth as any).getUser();
 
       const newItem = {
         case_id: caseId,
@@ -61,8 +63,8 @@ export const useCaseHistory = (caseId: string) => {
         .single();
 
       if (sbError) {
-          // Fallback para UI se tabela não existir
-          if (sbError.code === '42P01') {
+          // Fallback para UI se tabela não existir (modo demonstração)
+          if (sbError.code === '42P01' || sbError.code === 'PGRST205') {
               const mockItem = { ...newItem, id: crypto.randomUUID() } as CaseHistoryItem;
               setHistory(prev => [mockItem, ...prev]);
               return { success: true };
@@ -85,7 +87,7 @@ export const useCaseHistory = (caseId: string) => {
       try {
           const { error } = await supabase.from('case_history').delete().eq('id', id);
           if (error) {
-               if (error.code === '42P01') {
+               if (error.code === '42P01' || error.code === 'PGRST205') {
                    setHistory(prev => prev.filter(i => i.id !== id));
                    return { success: true };
                }

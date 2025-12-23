@@ -1,61 +1,49 @@
+
 import { GoogleGenAI } from "@google/genai";
 
-// NOTE: In a real app, this key should come from a secure backend or environment variable.
-// For this frontend-only demo, we rely on the user providing it or using a placeholder if strict.
-// Ideally, the user of this code injects their key into process.env.API_KEY.
-// We will handle the case where the key is missing gracefully in the UI.
-
-const apiKey = process.env.API_KEY || ''; 
+// O API Key é obtido exclusivamente das variáveis de ambiente
+// Modelo recomendado para tarefas de texto complexas (raciocínio jurídico)
+const modelId = 'gemini-3-pro-preview';
 
 export const generateLegalText = async (prompt: string, context?: string): Promise<string> => {
-  if (!apiKey) {
-    throw new Error("API Key is missing. Please configure your Gemini API Key.");
-  }
+  // Fix: Initialization strictly using named parameter and process.env.API_KEY as per guidelines
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  const systemInstruction = `Você é um assistente jurídico sênior do escritório LegalFlow. 
+  Seu tom é extremamente profissional, formal e preciso (Português Brasil). 
+  Você auxilia advogados a redigir petições, resumir casos e analisar riscos. 
+  Sempre use terminologia jurídica correta.`;
+
+  const fullPrompt = context 
+    ? `Contexto do Caso: ${context}\n\nTarefa: ${prompt}`
+    : prompt;
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    
-    // Using a model suitable for complex text tasks
-    const modelId = 'gemini-2.5-flash'; 
-
-    const systemInstruction = `You are an expert legal assistant AI for "LegalFlow". 
-    Your tone is professional, precise, and formal (Portuguese Brazil). 
-    You assist lawyers in drafting emails, summarizing case notes, and suggesting legal strategies. 
-    Always include a disclaimer that you are an AI and this is not binding legal advice.`;
-
-    const fullPrompt = context 
-      ? `Context: ${context}\n\nTask: ${prompt}`
-      : prompt;
-
     const response = await ai.models.generateContent({
       model: modelId,
       contents: fullPrompt,
       config: {
         systemInstruction,
-        temperature: 0.3, // Lower temperature for more deterministic/professional output
+        temperature: 0.2, // Mais factual para fins jurídicos
       }
     });
 
-    return response.text || "No response generated.";
+    return response.text || "Não foi possível gerar uma resposta.";
   } catch (error) {
-    console.error("Gemini API Error:", error);
+    console.error("Erro Gemini API:", error);
     throw error;
   }
 };
 
 export const sendChatMessage = async (history: {role: string, parts: {text: string}[]}[], message: string): Promise<string> => {
-    if (!apiKey) {
-        throw new Error("API Key is missing.");
-    }
+    // Fix: Initialization strictly using named parameter and process.env.API_KEY right before the call
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     try {
-        const ai = new GoogleGenAI({ apiKey });
-        const modelId = 'gemini-2.5-flash';
-
         const chat = ai.chats.create({
             model: modelId,
             config: {
-                systemInstruction: "Você é um assistente jurídico experiente chamado LegalFlow AI. Responda em Português do Brasil com terminologia jurídica adequada. Seja conciso, formal e útil.",
+                systemInstruction: "Você é o Assistente LegalFlow AI. Responda em Português (Brasil) com formalidade e precisão técnica. Seja conciso e útil.",
                 temperature: 0.4
             },
             history: history
@@ -64,7 +52,7 @@ export const sendChatMessage = async (history: {role: string, parts: {text: stri
         const result = await chat.sendMessage({ message });
         return result.text || "";
     } catch (error) {
-        console.error("Gemini Chat Error:", error);
+        console.error("Erro Gemini Chat:", error);
         throw error;
     }
 };

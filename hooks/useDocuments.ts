@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from 'react';
 import { supabase, handleSupabaseError } from '../services/supabaseClient';
 import { AppDocument } from '../types';
@@ -43,9 +44,12 @@ export const useDocuments = () => {
            docUrl = publicData.publicUrl;
         }
 
+        // Fix: Mapping properties to satisfy AppDocument interface requirements
         return {
           id: doc.id,
-          name: doc.title || doc.file_name || 'Sem Nome', // Prioriza Title conforme schema
+          title: doc.title || doc.file_name || 'Sem Nome',
+          file_path: doc.file_path || '',
+          name: doc.title || doc.file_name || 'Sem Nome',
           size: doc.file_size,
           type: doc.file_type || doc.mime_type,
           url: docUrl || '',
@@ -71,7 +75,8 @@ export const useDocuments = () => {
     setError(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // Fix: Casting supabase.auth to any to bypass outdated TypeScript definitions
+      const { data: { user } } = await (supabase.auth as any).getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
       const newDocs: AppDocument[] = [];
@@ -123,6 +128,8 @@ export const useDocuments = () => {
         if (dbData) {
             newDocs.push({
                 id: dbData.id,
+                title: dbData.title,
+                file_path: dbData.file_path,
                 name: dbData.title,
                 size: dbData.file_size,
                 type: dbData.file_type,

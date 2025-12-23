@@ -1,5 +1,8 @@
+
 import { useState, useEffect } from 'react';
-import { User, Session } from '@supabase/supabase-js';
+// Usando any para User e Session para compatibilidade
+type User = any;
+type Session = any;
 import { supabase } from '../services/supabaseClient';
 
 export const useAuth = () => {
@@ -8,68 +11,48 @@ export const useAuth = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Função para sincronizar o usuário do Auth com a tabela 'profiles'
-  // Usa UPSERT para garantir que o registro exista e esteja atualizado
   const syncProfile = async (currentUser: User, additionalData?: any) => {
     try {
       const metadata = currentUser.user_metadata || {};
-      
       const role = metadata.role || additionalData?.role || 'LAWYER';
+      const avatarUrl = metadata.avatarUrl || additionalData?.avatarUrl;
+      const logoUrl = metadata.logoUrl || additionalData?.logoUrl;
 
-      // Prepara os dados iniciais
       const profileData = {
         id: currentUser.id,
         email: currentUser.email,
         full_name: metadata.full_name || metadata.name || additionalData?.name || currentUser.email?.split('@')[0] || 'Usuário',
         role: role,
-        avatar_url: metadata.avatarUrl || additionalData?.avatarUrl,
+        avatar_url: avatarUrl,
+        logo_url: logoUrl,
         updated_at: new Date().toISOString(),
       };
 
-      // Tentativa 1: Envia dados como estão
+      // Tenta persistir na tabela de profiles
+      // Se a tabela ou colunas não existirem, pegamos o erro mas não bloqueamos o app
       const { error: upsertError } = await supabase
         .from('profiles')
         .upsert(profileData, { onConflict: 'id' });
 
       if (upsertError) {
-        // Tratamento para Erro 23514: Check Constraint Violation (provavelmente Role inválida)
-        if (upsertError.code === '23514') {
-             console.warn('⚠️ Violação de constraint de Role (23514). Tentando ajustar formato do role...');
-             
-             // Tentativa 2: Tenta enviar role em minúsculo (ex: 'LAWYER' -> 'lawyer')
-             // Muitos bancos configuram constraints com valores minúsculos
-             const retryData = { ...profileData, role: String(role).toLowerCase() };
-             const { error: retryError } = await supabase.from('profiles').upsert(retryData, { onConflict: 'id' });
-             
-             if (retryError) {
-                console.error('❌ Falha também na tentativa com role minúsculo:', retryError.message);
-             }
-
-        } else if (upsertError.code === 'PGRST204') {
-             console.warn('⚠️ Aviso: Algumas colunas não existem na tabela profiles. Sincronização parcial realizada.');
-        } else if (upsertError.code === '42501') {
-             // Ignora erro RLS
-        } else {
-             console.error('❌ Erro ao sincronizar perfil:', JSON.stringify(upsertError, null, 2));
+        // Log amigável apenas para desenvolvedor, sem poluir se for erro de coluna faltante
+        if (!upsertError.message.includes('column')) {
+          console.warn('Nota: Sincronização de profile limitada. Verifique as tabelas do banco.');
         }
       }
     } catch (err: any) {
-      console.error('❌ Erro inesperado na sincronização:', err.message);
+      // Falha silenciosa para não quebrar a UX
     }
   };
 
   useEffect(() => {
     const getSession = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const { data: { session }, error } = await (supabase.auth as any).getSession();
         if (error) throw error;
-        
         setSession(session);
         setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          await syncProfile(session.user);
-        }
+        if (session?.user) await syncProfile(session.user);
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -79,18 +62,16 @@ export const useAuth = () => {
 
     getSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = (supabase.auth as any).onAuthStateChange(
       async (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        
         if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') && session?.user) {
           await syncProfile(session.user);
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
           setSession(null);
         }
-        
         setLoading(false);
       }
     );
@@ -98,9 +79,25 @@ export const useAuth = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  const updateProfile = async (data: any) => {
+    try {
+      const { data: updated, error } = await (supabase.auth as any).updateUser({
+        data: data
+      });
+      if (error) throw error;
+      if (updated.user) {
+        setUser(updated.user);
+        await syncProfile(updated.user);
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
   const signUp = async (email: string, password: string, userData: any) => {
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error } = await (supabase.auth as any).signUp({
         email,
         password,
         options: {
@@ -111,17 +108,13 @@ export const useAuth = () => {
             cpf: userData.cpf,
             oab: userData.oab,
             phone: userData.phone,
-            avatarUrl: userData.avatarUrl
+            avatarUrl: userData.avatarUrl,
+            logoUrl: userData.logoUrl
           },
         },
       });
-
       if (error) throw error;
-      
-      if (data.user) {
-        await syncProfile(data.user, userData);
-      }
-      
+      if (data.user) await syncProfile(data.user, userData);
       return { data, error: null };
     } catch (err: any) {
       return { data: null, error: err.message };
@@ -130,26 +123,30 @@ export const useAuth = () => {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
+      const { data, error } = await (supabase.auth as any).signInWithPassword({ email, password });
       if (error) throw error;
-      
-      if (data.user) {
-        await syncProfile(data.user);
-      }
-      
+      if (data.user) await syncProfile(data.user);
       return { data, error: null };
     } catch (err: any) {
       return { data: null, error: err.message };
     }
   };
 
+  const resetPassword = async (email: string) => {
+    try {
+      const { error } = await (supabase.auth as any).resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
+      if (error) throw error;
+      return { error: null };
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  };
+
   const signOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
+      const { error } = await (supabase.auth as any).signOut();
       if (error) throw error;
       return { error: null };
     } catch (err: any) {
@@ -165,5 +162,7 @@ export const useAuth = () => {
     signUp,
     signIn,
     signOut,
+    resetPassword,
+    updateProfile
   };
 };

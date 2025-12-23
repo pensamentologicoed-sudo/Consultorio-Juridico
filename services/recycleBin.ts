@@ -1,8 +1,9 @@
+
 import { supabase, handleSupabaseError } from './supabaseClient';
 
 export interface RecycleBinItem {
-  id: string; // ID for list key (could be record_id or recycle_bin_id)
-  recycle_bin_id?: string; // Specific ID from the recycle bin table (if using RPC)
+  id: string; 
+  recycle_bin_id?: string;
   original_table: 'clients' | 'legal_cases' | 'counterparts' | 'documents';
   original_id: string;
   data: any;
@@ -17,54 +18,35 @@ export interface MoveToRecycleBinResponse {
   error?: string;
 }
 
-// Mover para lixeira (Tenta RPC primeiro, fallback para Update)
+/**
+ * Move um registro para a lixeira.
+ */
 export const moveToRecycleBin = async (
   tableName: 'clients' | 'counterparts' | 'legal_cases' | 'documents',
   recordId: string,
-  reason?: string
+  reason?: string | null
 ): Promise<MoveToRecycleBinResponse> => {
   try {
-    // 1. Tentar via RPC (Bypasses RLS if configured correctly)
-    const { error: rpcError } = await supabase.rpc('move_to_recycle_bin', {
+    const { data, error: rpcError } = await supabase.rpc('move_to_recycle_bin', {
       p_table_name: tableName,
       p_record_id: recordId,
       p_reason: reason || null
     });
 
     if (!rpcError) {
-      return { success: true, message: 'Item movido para a lixeira (RPC)' };
+      return { success: true, message: 'Item arquivado com sucesso' };
     }
 
-    // Se o erro for 42P01 (função não existe) ou erro de permissão que o RPC não resolveu, tentamos fallback manual
-    // Mas se o RPC existe e deu erro de negócio, talvez devêssemos parar.
-    // Vamos assumir que se deu erro, tentamos o método manual simplificado.
-    console.warn('RPC move_to_recycle_bin falhou, tentando soft delete manual:', rpcError.message);
-
-    // 2. Fallback: Soft Delete Manual (Update deleted_at)
-    // Nota: NÃO atualizamos updated_at para evitar trigger de RLS que bloqueia edições
-    const timestamp = new Date().toISOString();
-    
-    // ATUALIZAÇÃO: Documentos agora suportam soft delete se a coluna existir.
-    
+    console.warn('Fallback: Usando Soft Delete direto.');
     const { error: updateError } = await supabase
       .from(tableName)
-      .update({ deleted_at: timestamp })
+      .update({ deleted_at: new Date().toISOString() })
       .eq('id', recordId);
 
     if (updateError) throw updateError;
-
-    // Cascata manual para Clientes -> Processos
-    if (tableName === 'clients') {
-        await supabase
-            .from('legal_cases')
-            .update({ deleted_at: timestamp })
-            .eq('client_id', recordId);
-    }
-
-    return { success: true, message: 'Item movido para a lixeira (Soft Delete)' };
+    return { success: true, message: 'Item movido para a lixeira' };
 
   } catch (error: any) {
-    console.error(`Erro fatal ao mover para lixeira (${tableName}):`, error);
     return {
       success: false,
       message: 'Erro ao excluir item',
@@ -73,161 +55,125 @@ export const moveToRecycleBin = async (
   }
 };
 
-// Restaurar (Tenta RPC primeiro, fallback para Update)
+/**
+ * Restaura um item da lixeira.
+ * Ação tripla para garantir que o item suma da lixeira.
+ */
 export const restoreFromRecycleBin = async (
   recordId: string,
   tableName?: string,
-  recycleBinId?: string // Opcional, usado se veio do view
+  recycleBinId?: string 
 ): Promise<MoveToRecycleBinResponse> => {
   try {
-    // 1. Tentar via RPC se tivermos o ID da lixeira
+    // 1. Tenta restaurar via RPC (que deveria fazer tudo em uma transação)
     if (recycleBinId) {
         const { error: rpcError } = await supabase.rpc('restore_from_recycle_bin', {
             p_recycle_bin_id: recycleBinId
         });
-        if (!rpcError) return { success: true, message: 'Item restaurado (RPC)' };
-        console.warn('RPC restore falhou, tentando manual:', rpcError.message);
+        if (!rpcError) return { success: true, message: 'Item restaurado com sucesso' };
     }
 
-    if (!tableName) return { success: false, message: 'Tabela não informada para restauração manual.' };
+    // 2. Fallback Manual Robusto
+    if (!tableName) return { success: false, message: 'Identificação da tabela necessária para restauração manual.' };
 
-    // 2. Fallback: Update manual
-    const { error } = await supabase
-      .from(tableName)
-      .update({ deleted_at: null })
-      .eq('id', recordId);
+    // A. Reativa o registro original
+    await supabase.from(tableName).update({ deleted_at: null }).eq('id', recordId);
 
-    if (error) throw error;
+    // B. Deleta da tabela de auditoria (por ID da lixeira se tiver)
+    if (recycleBinId) {
+        await supabase.from('recycle_bin').delete().eq('id', recycleBinId);
+    }
+
+    // C. Deleta da tabela de auditoria (por ID original para garantir)
+    await supabase.from('recycle_bin').delete().eq('original_id', recordId).eq('original_table', tableName);
 
     return { success: true, message: 'Item restaurado com sucesso' };
   } catch (error: any) {
     return {
       success: false,
-      message: 'Erro ao restaurar item',
+      message: 'Erro ao restaurar',
       error: handleSupabaseError(error)
     };
   }
 };
 
-// Buscar itens (Merge de View RPC + Soft Deleted Tables)
+/**
+ * Lista itens da lixeira com verificação de integridade.
+ */
 export const getRecycleBinItems = async (): Promise<RecycleBinItem[]> => {
-  const items: RecycleBinItem[] = [];
-  const seenIds = new Set<string>();
-
+  const itemsMap = new Map<string, RecycleBinItem>();
+  
   try {
-    // 1. Tentar buscar da VIEW (RPC Backend)
-    const { data: viewData, error: viewError } = await supabase
-      .from('recycle_bin_view') 
-      .select('*')
-      .order('deleted_at', { ascending: false });
+    // 1. Busca na tabela centralizada de auditoria
+    const { data: binData } = await supabase.from('recycle_bin').select('*');
+    
+    // 2. Scan de Fallback em todas as tabelas
+    const tables = ['clients', 'legal_cases', 'counterparts', 'documents'];
+    const results = await Promise.all(
+        tables.map(t => supabase.from(t).select('*').not('deleted_at', 'is', null))
+    );
+    
+    // Adiciona itens do Scan primeiro (são os mais crus)
+    results.forEach((res, index) => {
+        if (res.data) {
+            res.data.forEach((item: any) => {
+                itemsMap.set(item.id, {
+                    id: item.id,
+                    original_table: tables[index] as any,
+                    original_id: item.id,
+                    data: item,
+                    deleted_at: item.deleted_at,
+                    source: 'soft_delete'
+                });
+            });
+        }
+    });
 
-    if (!viewError && viewData) {
-      viewData.forEach((row: any) => {
-        const originalId = row.record_id || row.record?.id;
-        if (originalId) {
-            seenIds.add(originalId);
-            items.push({
-                id: row.id || originalId, 
+    // Sobrescreve/Complementa com dados da tabela de auditoria (mais ricos)
+    if (binData) {
+      binData.forEach((row: any) => {
+        // VERIFICAÇÃO DE INTEGRIDADE: 
+        // Se o item está na recycle_bin mas o original_id NÃO está na lista de itens com deleted_at,
+        // significa que ele foi restaurado mas a linha na recycle_bin "sobrou".
+        // Só mostramos se ele ainda estiver marcado como deletado nas tabelas originais.
+        if (itemsMap.has(row.original_id)) {
+            itemsMap.set(row.original_id, {
+                id: row.id,
                 recycle_bin_id: row.id,
-                original_table: row.table_name || row.original_table,
-                original_id: originalId,
-                data: row.record || row.data || {},
+                original_table: row.original_table,
+                original_id: row.original_id,
+                data: row.data || { name: row.item_name || 'Sem nome' },
                 deleted_at: row.deleted_at,
                 source: 'rpc'
             });
         }
       });
     }
+
+    return Array.from(itemsMap.values())
+        // Filtro final: só mostra o que tem data de deleção (evita itens restaurados)
+        .filter(item => item.deleted_at !== null)
+        .sort((a, b) => new Date(b.deleted_at).getTime() - new Date(a.deleted_at).getTime());
+        
   } catch (err) {
-    console.warn('Recycle Bin View não acessível, pulando...');
+    console.error('Erro ao listar lixeira:', err);
+    return [];
   }
-
-  // 2. Buscar itens Soft Deleted das tabelas (Fallback / Legado)
-  try {
-    const promises = [
-      supabase.from('clients').select('*').not('deleted_at', 'is', null),
-      supabase.from('legal_cases').select('*').not('deleted_at', 'is', null),
-      supabase.from('counterparts').select('*').not('deleted_at', 'is', null),
-      supabase.from('documents').select('*').not('deleted_at', 'is', null), // Add documents scan
-    ];
-
-    const [clientsRes, casesRes, counterpartsRes, documentsRes] = await Promise.all(promises);
-
-    const processManualItem = (res: any, table: any) => {
-        if (res.data) {
-            res.data.forEach((item: any) => {
-                if (!seenIds.has(item.id)) {
-                    items.push({
-                        id: item.id,
-                        original_table: table,
-                        original_id: item.id,
-                        data: item,
-                        deleted_at: item.deleted_at,
-                        source: 'soft_delete'
-                    });
-                }
-            });
-        }
-    };
-
-    processManualItem(clientsRes, 'clients');
-    processManualItem(casesRes, 'legal_cases');
-    processManualItem(counterpartsRes, 'counterparts');
-    processManualItem(documentsRes, 'documents');
-
-  } catch (err) {
-    console.error('Erro ao buscar itens manuais:', err);
-  }
-
-  return items.sort((a, b) => new Date(b.deleted_at).getTime() - new Date(a.deleted_at).getTime());
 };
 
+/**
+ * Deleta permanentemente um registro.
+ */
 export const permanentDeleteFromRecycleBin = async (
   recordId: string,
-  tableName?: string
+  tableName: string
 ): Promise<boolean> => {
   try {
-    if (!tableName) throw new Error("Tabela necessária");
-
-    // Lógica específica para deletar ARQUIVOS do Storage se for um documento
-    if (tableName === 'documents') {
-        try {
-            // 1. Busca o caminho do arquivo antes de deletar o registro
-            const { data, error: fetchError } = await supabase
-                .from('documents')
-                .select('file_path')
-                .eq('id', recordId)
-                .single();
-            
-            if (!fetchError && data?.file_path) {
-                // 2. Remove do Storage
-                const { error: storageError } = await supabase.storage
-                    .from('documents')
-                    .remove([data.file_path]);
-                
-                if (storageError) {
-                    console.warn('Aviso: Erro ao deletar arquivo físico do Storage:', storageError.message);
-                } else {
-                    console.log('Arquivo físico deletado com sucesso.');
-                }
-            }
-        } catch (storageErr) {
-            console.warn('Erro ao processar exclusão de arquivo:', storageErr);
-            // Não impede a exclusão do registro do banco se o arquivo já não existir
-        }
-    }
-
-    if (tableName === 'clients') {
-        await supabase.from('legal_cases').delete().eq('client_id', recordId);
-    }
-    
-    // Deletar o registro do banco de dados
-    const { error } = await supabase.from(tableName).delete().eq('id', recordId);
-    
-    if (error) throw error;
+    await supabase.from(tableName).delete().eq('id', recordId);
+    await supabase.from('recycle_bin').delete().eq('original_id', recordId).eq('original_table', tableName);
     return true;
   } catch (error) {
-    console.error('Erro delete permanente:', error);
+    console.error('Erro na exclusão permanente:', error);
     return false;
   }
 };

@@ -1,3 +1,4 @@
+
 import { supabase, handleSupabaseError } from './supabaseClient';
 import { Client, LegalCase, Counterpart } from '../types';
 
@@ -25,7 +26,8 @@ export const getClients = async (searchTerm = ''): Promise<Client[]> => {
 };
 
 export const saveClient = async (client: Partial<Client>) => {
-  const { data: { user } } = await supabase.auth.getUser();
+  // Fix: Casting supabase.auth to any to bypass outdated TypeScript definitions
+  const { data: { user } } = await (supabase.auth as any).getUser();
   
   if (client.id) {
     const { data, error } = await supabase

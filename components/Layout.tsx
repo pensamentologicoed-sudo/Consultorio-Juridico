@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
   Briefcase, 
@@ -12,11 +13,13 @@ import {
   PieChart,
   Clock,
   ShieldAlert,
-  Trash2,
   Bot,
-  Calculator
+  Calculator,
+  Settings,
+  Trash2,
+  Loader2
 } from 'lucide-react';
-import { User, UserRole } from '../types';
+import { User } from '../types';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -46,210 +49,131 @@ const Layout: React.FC<LayoutProps> = ({
     { name: 'Assistente IA', id: 'ai_assistant', icon: Bot },
     { name: 'Calc. Prazos', id: 'calculator', icon: Calculator },
     { name: 'Relatórios', id: 'reports', icon: PieChart },
+    { name: 'Lixeira', id: 'trash', icon: Trash2 },
+    { name: 'Configurações', id: 'settings', icon: Settings },
   ];
-
-  const getDisplayNames = (fullName: string) => {
-    const cleanName = fullName.replace(/^Dr\.?\s+/i, '');
-    const parts = cleanName.trim().split(/\s+/);
-    const twoNames = parts.slice(0, 2).join(' ');
-    return `Dr. ${twoNames}`;
-  };
-
-  const getRoleDisplayName = (role: string) => {
-    switch (role) {
-      case UserRole.LAWYER: return 'Advogado';
-      case UserRole.ADMIN: return 'Administrador';
-      case UserRole.INTERN: return 'Estagiário';
-      case UserRole.CLIENT: return 'Cliente';
-      default: return role;
-    }
-  };
 
   const handleNavClick = (viewId: string) => {
     onNavigate(viewId);
     setIsMobileMenuOpen(false);
   };
 
-  // Permite acesso à lixeira para Admins e Advogados
-  const canAccessTrash = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.LAWYER;
+  const getRoleLabel = (role: string) => {
+    const r = role.toLowerCase();
+    if (r === 'lawyer') return 'Advogado';
+    if (r === 'admin') return 'Administrador';
+    if (r === 'assistant') return 'Assessor';
+    if (r === 'client') return 'Cliente';
+    return role;
+  };
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-[#f3f4f6] font-sans">
       
-      {/* Sidebar for Desktop - Blue Theme */}
-      <aside className="hidden md:flex md:flex-col w-64 bg-blue-900 text-white flex-shrink-0 transition-all duration-300 shadow-xl z-10">
-        {/* Header with Button Color (Blue-600) */}
-        <div className="flex items-center h-16 px-6 bg-blue-600 border-b border-blue-500 shadow-sm">
-          <Briefcase className="h-8 w-8 text-white mr-3" />
-          <span className="text-xl font-bold leading-none text-white tracking-wide">LegalFlow</span>
+      {/* Sidebar Desktop - Luxury Black & Gold */}
+      <aside className="hidden md:flex md:flex-col w-64 bg-[#0a0a0a] text-white flex-shrink-0 transition-all duration-300 shadow-2xl z-20 border-r border-brand-gold/10">
+        
+        {/* Logo Section */}
+        <div className="flex items-center h-20 px-8 bg-[#131313] border-b border-brand-gold/20 relative">
+          <div className="relative h-6 w-6 shrink-0 mr-3 flex items-center justify-center">
+            {currentUser.logoUrl ? (
+              <img src={currentUser.logoUrl} alt="Escritório Logo" className="h-full w-full object-contain" />
+            ) : (
+              <Briefcase className="h-4 w-4 text-brand-gold" />
+            )}
+          </div>
+
+          <div className="flex flex-col">
+            <span className="text-lg font-black text-brand-gold tracking-tighter leading-tight">Sistema</span>
+            <span className="text-[9px] text-white font-bold opacity-40 uppercase tracking-[0.2em] -mt-1">Jurídico</span>
+          </div>
         </div>
 
-        <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-4 py-8 space-y-1 overflow-y-auto custom-scrollbar">
           {navigation.map((item) => {
             const isActive = currentView === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => handleNavClick(item.id)}
-                className={`w-full group flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
+                className={`w-full group flex items-center px-4 py-2.5 text-[9px] font-bold uppercase tracking-wider rounded-xl transition-all duration-300 ${
                   isActive 
-                    ? 'bg-blue-700 text-white shadow-md ring-1 ring-blue-600' 
-                    : 'text-blue-100 hover:bg-blue-800 hover:text-white'
+                    ? 'bg-[#1a1a1a] text-brand-gold border border-brand-gold/30 shadow-lg' 
+                    : 'text-gray-500 hover:text-brand-gold hover:bg-white/5'
                 }`}
               >
-                <item.icon className={`mr-3 h-5 w-5 flex-shrink-0 ${isActive ? 'text-white' : 'text-blue-300 group-hover:text-white'}`} />
+                <item.icon className={`mr-3 h-3.5 w-3.5 ${isActive ? 'text-brand-gold' : 'text-gray-600 group-hover:text-brand-gold'}`} />
                 {item.name}
               </button>
             );
           })}
-          
-          {canAccessTrash && (
-            <div className="pt-4 mt-4 border-t border-blue-800">
-               <button
-                  onClick={() => handleNavClick('trash')}
-                  className={`w-full group flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
-                    currentView === 'trash' 
-                      ? 'bg-red-900/40 text-red-100 border border-red-800' 
-                      : 'text-blue-200 hover:bg-blue-800 hover:text-red-200'
-                  }`}
-                >
-                  <Trash2 className="mr-3 h-5 w-5 flex-shrink-0" />
-                  Lixeira
-                </button>
-            </div>
-          )}
         </nav>
 
-        <div className="p-4 bg-blue-900 border-t border-blue-800">
-          <div className="flex items-center mb-4">
-            <div className="h-9 w-9 rounded-full bg-white flex items-center justify-center text-blue-900 font-bold border-2 border-blue-200">
-              {currentUser.name.charAt(0)}
+        <div className="p-6 bg-[#050505] border-t border-brand-gold/10">
+          <div className="flex items-center mb-6">
+            <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-[#131313] to-black flex items-center justify-center text-brand-gold font-bold border border-brand-gold/30 overflow-hidden shrink-0 shadow-lg">
+              {currentUser.avatarUrl ? (
+                <img src={currentUser.avatarUrl} className="h-full w-full object-cover" alt="User Avatar" />
+              ) : (
+                <span className="text-xs">{currentUser.name.charAt(0)}</span>
+              )}
             </div>
-            <div className="ml-3">
-              <p className="text-sm font-medium text-white truncate w-32">{getDisplayNames(currentUser.name)}</p>
-              <p className="text-xs text-blue-200 uppercase">{getRoleDisplayName(currentUser.role)}</p>
+            
+            <div className="ml-3 overflow-hidden">
+              <p className="text-[10px] font-black text-white truncate uppercase tracking-tight">{currentUser.name}</p>
+              <p className="text-[8px] text-brand-gold font-bold uppercase opacity-60 tracking-widest">
+                {getRoleLabel(currentUser.role)}
+              </p>
             </div>
           </div>
+          
           <button 
             onClick={onLogout}
-            className="w-full flex items-center justify-center px-4 py-2 text-sm text-blue-100 bg-blue-800 hover:bg-blue-700 hover:text-white rounded-lg transition-colors border border-blue-700"
+            className="w-full flex items-center justify-center px-4 py-2.5 text-[9px] font-bold uppercase tracking-widest text-brand-gold bg-[#131313] hover:bg-black rounded-xl transition-all border border-brand-gold/20"
           >
-            <LogOut className="h-4 w-4 mr-2" />
+            <LogOut className="h-3 w-3 mr-2" />
             Sair
           </button>
         </div>
       </aside>
 
-      {/* Mobile Header & Main Content */}
+      {/* Mobile Toggle */}
+      <div className="md:hidden fixed top-4 left-4 z-50">
+        <button 
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="p-2 bg-[#131313] text-brand-gold rounded-lg shadow-lg border border-brand-gold/20"
+        >
+          {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
+      </div>
+
+      {/* Mobile Sidebar */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden fixed inset-0 z-40 flex">
+           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}></div>
+           <aside className="relative w-64 bg-[#0a0a0a] h-full flex flex-col shadow-2xl border-r border-brand-gold/10 animate-in slide-in-from-left duration-300">
+             <div className="flex-1 px-4 py-20 space-y-1 overflow-y-auto">
+                {navigation.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => handleNavClick(item.id)}
+                    className={`w-full group flex items-center px-4 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${
+                      currentView === item.id ? 'bg-[#1a1a1a] text-brand-gold border border-brand-gold/20' : 'text-gray-500'
+                    }`}
+                  >
+                    <item.icon className="mr-3 h-4 w-4" />
+                    {item.name}
+                  </button>
+                ))}
+             </div>
+           </aside>
+        </div>
+      )}
+
+      {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        
-        {/* Mobile Header */}
-        <header className="md:hidden bg-blue-600 text-white shadow-md z-20 flex items-center justify-between px-4 h-16 shrink-0">
-          <div className="flex items-center">
-            <Briefcase className="h-6 w-6 text-white mr-2" />
-            <span className="font-bold text-lg">LegalFlow</span>
-          </div>
-          <button
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="p-2 rounded-md text-blue-100 hover:bg-blue-500 focus:outline-none"
-          >
-            <Menu className="h-6 w-6" />
-          </button>
-        </header>
-
-        {/* Mobile Menu Off-Canvas Overlay */}
-        {isMobileMenuOpen && (
-          <div className="fixed inset-0 z-50 md:hidden flex">
-            {/* Backdrop */}
-            <div 
-              className="fixed inset-0 bg-blue-900/90 backdrop-blur-sm transition-opacity" 
-              onClick={() => setIsMobileMenuOpen(false)}
-            />
-
-            {/* Sidebar Drawer */}
-            <div className="relative flex-1 flex flex-col max-w-xs w-full bg-blue-900 text-white shadow-xl animate-in slide-in-from-left duration-300 border-r border-blue-800">
-              {/* Close Button & Header */}
-              <div className="flex items-center justify-between h-16 px-6 bg-blue-600 shrink-0 border-b border-blue-500">
-                <div className="flex items-center">
-                  <Briefcase className="h-6 w-6 text-white mr-2" />
-                  <span className="font-bold text-lg text-white">LegalFlow</span>
-                </div>
-                <button 
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="p-1 rounded-md text-blue-100 hover:text-white hover:bg-blue-500 focus:outline-none"
-                >
-                  <X className="h-6 w-6" />
-                </button>
-              </div>
-
-              {/* Navigation Links */}
-              <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-                {navigation.map((item) => {
-                  const isActive = currentView === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => handleNavClick(item.id)}
-                      className={`w-full group flex items-center px-3 py-3 text-base font-medium rounded-lg transition-colors ${
-                        isActive 
-                          ? 'bg-blue-700 text-white shadow-sm' 
-                          : 'text-blue-100 hover:bg-blue-800 hover:text-white'
-                      }`}
-                    >
-                      <item.icon className={`mr-3 h-5 w-5 flex-shrink-0 ${isActive ? 'text-white' : 'text-blue-300 group-hover:text-white'}`} />
-                      {item.name}
-                    </button>
-                  );
-                })}
-                
-                {canAccessTrash && (
-                  <div className="pt-4 mt-4 border-t border-blue-800">
-                     <button
-                        onClick={() => handleNavClick('trash')}
-                        className={`w-full group flex items-center px-3 py-3 text-base font-medium rounded-lg transition-colors ${
-                          currentView === 'trash' 
-                             ? 'bg-red-900/40 text-red-100 border border-red-800' 
-                             : 'text-blue-200 hover:bg-blue-800 hover:text-red-200'
-                        }`}
-                      >
-                        <Trash2 className="mr-3 h-5 w-5 flex-shrink-0" />
-                        Lixeira
-                      </button>
-                  </div>
-                )}
-              </nav>
-
-              {/* User Footer */}
-              <div className="p-4 bg-blue-900 border-t border-blue-800 shrink-0">
-                <div className="flex items-center mb-4">
-                  <div className="h-10 w-10 rounded-full bg-white flex items-center justify-center text-blue-900 font-bold border-2 border-blue-200 shrink-0">
-                    {currentUser.name.charAt(0)}
-                  </div>
-                  <div className="ml-3 overflow-hidden">
-                    <p className="text-sm font-medium text-white truncate">{getDisplayNames(currentUser.name)}</p>
-                    <p className="text-xs text-blue-200 uppercase">{getRoleDisplayName(currentUser.role)}</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={onLogout}
-                  className="w-full flex items-center justify-center px-4 py-3 text-sm text-blue-100 bg-blue-800 hover:bg-blue-700 hover:text-white rounded-lg transition-colors font-medium border border-blue-700"
-                >
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Sair
-                </button>
-              </div>
-            </div>
-            
-            {/* Clickable area to close (remaining space) */}
-            <div className="flex-shrink-0 w-14" aria-hidden="true">
-              {/* Dummy element to force drawer width */}
-            </div>
-          </div>
-        )}
-
-        {/* Main Content Scrollable Area */}
-        <main className="flex-1 overflow-y-auto bg-slate-50 p-4 sm:p-8">
-          <div className="max-w-7xl mx-auto">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-10 custom-scrollbar">
+          <div className="max-w-5xl mx-auto">
              {children}
           </div>
         </main>

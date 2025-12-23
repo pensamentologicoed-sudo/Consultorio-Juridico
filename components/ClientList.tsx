@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Client } from '../types';
 import { User, Phone, Mail, Pencil, Trash2 } from 'lucide-react';
@@ -29,13 +30,15 @@ const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onEdit }) =>
                 <p className="text-sm font-medium text-gray-900">{client.name}</p>
                 {client.status === 'active' ? (
                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Ativo</span>
-                ) : (
+                ) : client.status === 'inactive' ? (
                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Inativo</span>
+                ) : (
+                   <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Potencial</span>
                 )}
               </div>
               <div className="flex flex-col sm:flex-row sm:items-center text-xs text-gray-500 sm:space-x-3 mt-1">
-                 <span className="flex items-center mb-1 sm:mb-0"><Phone className="h-3 w-3 mr-1"/> {client.phone}</span>
-                 {client.email && <span className="flex items-center"><Mail className="h-3 w-3 mr-1"/> {client.email}</span>}
+                 <span className="flex items-center mb-1 sm:mb-0"><Phone className="h-2.5 w-2.5 mr-1"/> {client.phone}</span>
+                 {client.email && <span className="flex items-center"><Mail className="h-2.5 w-2.5 mr-1"/> {client.email}</span>}
               </div>
             </div>
           </div>
@@ -48,7 +51,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onEdit }) =>
               className="text-gray-400 hover:text-blue-600 p-2 rounded-full hover:bg-blue-50 transition-colors"
               title="Editar"
             >
-              <Pencil className="h-4 w-4" />
+              <Pencil className="h-3 w-3" />
             </button>
             <DeleteButton 
               tableName="clients"

@@ -2,24 +2,25 @@ import React, { useEffect, useState } from 'react';
 import { useCases } from '../hooks/useCases';
 import { useClients } from '../hooks/useClients';
 import { useAgenda } from '../hooks/useAgenda'; // Importa hook da agenda
-import { Clock, Calendar as CalendarIcon, Briefcase, Users, Phone, FileText } from 'lucide-react';
+import { Clock, Calendar as CalendarIcon, Briefcase, Users, Phone, FileText, AlertTriangle } from 'lucide-react';
 
 interface ScheduleItem {
   id: string;
   title: string;
-  date: string; // ISO String
+  date: string; // ISO String Completa
   type: 'hearing' | 'meeting' | 'deadline' | 'call' | 'conference';
   source: 'case' | 'agenda';
   subtitle: string;
   status?: string;
   priority?: string;
   time?: string;
+  rawDate: Date; // Added for sort
 }
 
 const Prazos: React.FC = () => {
   const { cases, loading: casesLoading, fetchCases } = useCases();
   const { clients, fetchClients } = useClients();
-  const { events, fetchEvents, loading: agendaLoading } = useAgenda(); // Usa eventos reais da agenda
+  const { events, fetchEvents, loading: agendaLoading } = useAgenda(); 
 
   const [filter, setFilter] = useState('all');
   const [items, setItems] = useState<ScheduleItem[]>([]);
@@ -35,55 +36,88 @@ const Prazos: React.FC = () => {
     return client ? client.name : 'Cliente não encontrado';
   };
 
-  // Merge Cases and Agenda Events
+  const parseLocalDate = (dateStr: string, timeStr?: string) => {
+    if (!dateStr) return new Date();
+    const parts = dateStr.split('-');
+    const year = parseInt(parts[0]);
+    const month = parseInt(parts[1]) - 1; 
+    const day = parseInt(parts[2]);
+    
+    if (timeStr) {
+      const timeParts = timeStr.split(':');
+      return new Date(year, month, day, parseInt(timeParts[0]), parseInt(timeParts[1]));
+    }
+    return new Date(year, month, day); 
+  };
+
+  // Merge Cases and Agenda Events com tratamento de erros de data
   useEffect(() => {
-    if (cases && events) {
+    if (cases || events) {
+      const validCases = cases || [];
+      const validEvents = events || [];
+
       // 1. Transformar Processos em Itens de Agenda
-      const caseItems: ScheduleItem[] = cases
-        .filter(c => c.next_hearing)
-        .map(c => ({
-          id: c.id,
-          title: `Audiência: ${c.title}`,
-          date: c.next_hearing!,
-          type: 'hearing',
-          source: 'case',
-          subtitle: `Proc. ${c.case_number} | ${getClientName(c.client_id)}`,
-          status: c.status,
-          priority: c.priority,
-          time: new Date(c.next_hearing!).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-        }));
+      const caseItems: ScheduleItem[] = validCases
+        .filter(c => c.next_hearing) // Só pega se tiver data definida
+        .map(c => {
+          const d = new Date(c.next_hearing!);
+          return {
+            id: c.id,
+            title: `Audiência: ${c.title}`,
+            date: c.next_hearing!,
+            type: 'hearing',
+            source: 'case',
+            subtitle: `Proc. ${c.case_number} | ${getClientName(c.client_id)}`,
+            status: c.status,
+            priority: c.priority,
+            time: d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+            rawDate: d
+          };
+        });
 
-      // 2. Transformar Eventos da Agenda (do useAgenda) em Itens
-      const agendaItems: ScheduleItem[] = events.map(e => ({
-          id: String(e.id),
-          title: e.title,
-          date: `${e.date}T${e.time}:00`, // Constrói ISO para ordenação
-          type: e.type as any,
-          source: 'agenda',
-          subtitle: e.client ? `Cliente: ${e.client}` : `Local: ${e.location || 'N/A'}`,
-          time: e.time
-      }));
+      // 2. Transformar Eventos da Agenda
+      const agendaItems: ScheduleItem[] = validEvents.map(e => {
+          const datePart = e.date || new Date().toISOString().split('T')[0];
+          const timePart = e.time ? (e.time.length === 5 ? `${e.time}:00` : e.time) : '00:00:00';
+          
+          const localDate = parseLocalDate(datePart, e.time);
+          
+          // Reconstruct ISO safely using local date
+          let isoDate = localDate.toISOString(); 
 
-      // 3. Combinar e Ordenar
-      const combined = [...caseItems, ...agendaItems].sort((a, b) => 
-        new Date(a.date).getTime() - new Date(b.date).getTime()
-      );
+          return {
+            id: String(e.id),
+            title: e.title || '(Sem Título)',
+            date: isoDate,
+            type: e.type as any,
+            source: 'agenda',
+            subtitle: e.client ? `Cliente: ${e.client}` : `Local: ${e.location || 'N/A'}`,
+            time: e.time || 'Dia todo',
+            rawDate: localDate
+          };
+      });
+
+      // 3. Combinar, Filtrar Inválidos e Ordenar
+      const combined = [...caseItems, ...agendaItems]
+        .filter(item => !isNaN(item.rawDate.getTime())) // Remove itens com data inválida
+        .sort((a, b) => a.rawDate.getTime() - b.rawDate.getTime());
 
       setItems(combined);
     }
   }, [cases, clients, events]);
 
   const filteredItems = items.filter(item => {
-      const itemDate = new Date(item.date);
+      const itemDate = item.rawDate;
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
-      const diffTime = itemDate.getTime() - today.getTime();
+      const itemDay = new Date(itemDate);
+      itemDay.setHours(0,0,0,0);
+
+      const diffTime = itemDay.getTime() - today.getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
 
-      const isSameDay = itemDate.getDate() === today.getDate() && 
-                        itemDate.getMonth() === today.getMonth() && 
-                        itemDate.getFullYear() === today.getFullYear();
+      const isSameDay = itemDay.getTime() === today.getTime();
 
       if (filter === 'today') return isSameDay;
       if (filter === 'week') return diffDays <= 7 && diffDays >= 0;
@@ -93,18 +127,20 @@ const Prazos: React.FC = () => {
       return true;
   });
 
-  const getStatusBadge = (dateStr: string) => {
-    const date = new Date(dateStr);
+  const getStatusBadge = (dateObj: Date) => {
     const today = new Date();
     today.setHours(0,0,0,0); 
     
-    const isPast = date.getTime() < new Date().getTime();
-    const isToday = date.toDateString() === new Date().toDateString();
+    const itemDay = new Date(dateObj);
+    itemDay.setHours(0,0,0,0);
 
-    if (isPast && !isToday) return { text: 'Atrasado', color: 'bg-red-100 text-red-800 border-red-200' };
+    const isPast = itemDay.getTime() < today.getTime();
+    const isToday = itemDay.getTime() === today.getTime();
+
+    if (isPast) return { text: 'Atrasado', color: 'bg-red-100 text-red-800 border-red-200' };
     if (isToday) return { text: 'Hoje', color: 'bg-green-100 text-green-800 border-green-200' };
     
-    const diffTime = date.getTime() - today.getTime();
+    const diffTime = itemDay.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
     
     if (diffDays <= 3) return { text: 'Próximo', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' };
@@ -183,11 +219,12 @@ const Prazos: React.FC = () => {
              <div className="p-12 text-center text-gray-400 flex flex-col items-center">
                <CalendarIcon className="w-12 h-12 mb-3 text-gray-300" />
                <p>Nenhum compromisso encontrado para este filtro.</p>
+               <p className="text-xs mt-2 text-gray-300">Verifique se as datas no banco estão no formato AAAA-MM-DD</p>
              </div>
           ) : (
             <div className="divide-y divide-gray-200">
               {filteredItems.map((item) => {
-                const status = getStatusBadge(item.date);
+                const status = getStatusBadge(item.rawDate);
                 
                 return (
                   <div key={item.id} className="p-5 hover:bg-gray-50 transition-colors">
@@ -217,10 +254,10 @@ const Prazos: React.FC = () => {
                       <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto pl-12 sm:pl-0">
                         <div className="text-right">
                           <div className="text-sm font-bold text-gray-900">
-                            {new Date(item.date).toLocaleDateString('pt-BR')}
+                            {item.rawDate.toLocaleDateString('pt-BR')}
                           </div>
                           <div className="text-xs text-gray-500">
-                            {item.time || new Date(item.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            {item.time?.length > 5 ? item.time.substring(0,5) : (item.time || '00:00')}
                           </div>
                         </div>
                         {status && (
@@ -251,17 +288,15 @@ const Prazos: React.FC = () => {
             ))}
             {Array.from({ length: 35 }).map((_, index) => {
               const day = index + 1;
-              const dateToCheck = new Date();
-              dateToCheck.setDate(day);
               
               const hasItem = items.some(i => {
-                const d = new Date(i.date);
-                return d.getDate() === day && d.getMonth() === new Date().getMonth();
+                const d = i.rawDate;
+                return !isNaN(d.getTime()) && d.getDate() === day && d.getMonth() === new Date().getMonth();
               });
 
               const typesOnDay = items.filter(i => {
-                const d = new Date(i.date);
-                return d.getDate() === day && d.getMonth() === new Date().getMonth();
+                const d = i.rawDate;
+                return !isNaN(d.getTime()) && d.getDate() === day && d.getMonth() === new Date().getMonth();
               }).map(i => i.type);
               
               let dotColor = 'bg-gray-300';

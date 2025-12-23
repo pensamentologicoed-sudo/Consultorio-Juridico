@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from 'react';
 import { supabase, handleSupabaseError } from '../services/supabaseClient';
 import { Counterpart } from '../types';
@@ -65,7 +66,8 @@ export const useCounterparts = () => {
     setError(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // Fix: Casting supabase.auth to any to bypass outdated TypeScript definitions
+      const { data: { user } } = await (supabase.auth as any).getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
       // Generate UUID client-side

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw } from 'lucide-react';
 import { getRecycleBinItems, restoreFromRecycleBin, permanentDeleteFromRecycleBin, RecycleBinItem } from '../services/recycleBin';
@@ -33,11 +34,14 @@ const TrashList: React.FC<TrashListProps> = ({ onRestore }) => {
   const handleRestore = async (item: RecycleBinItem) => {
     setRestoringId(item.id);
     try {
-      // Pass both IDs to support RPC or Manual restore
       const result = await restoreFromRecycleBin(item.original_id, item.original_table, item.recycle_bin_id);
       if (result.success) {
-        await loadItems();
+        // Atualização Otimista: Remove o item do estado local imediatamente
+        setItems(prev => prev.filter(i => i.id !== item.id));
+        // Dispara o callback para atualizar a lista de ativos no componente pai
         onRestore();
+        // Recarrega silenciosamente para garantir sincronia completa
+        setTimeout(loadItems, 500);
       } else {
         alert(`Erro ao restaurar: ${result.error}`);
       }
@@ -53,7 +57,8 @@ const TrashList: React.FC<TrashListProps> = ({ onRestore }) => {
     try {
       const success = await permanentDeleteFromRecycleBin(item.original_id, item.original_table);
       if (success) {
-        await loadItems();
+        setItems(prev => prev.filter(i => i.id !== item.id));
+        setConfirmDeleteId(null);
       } else {
         alert('Erro ao excluir permanentemente.');
       }
@@ -61,7 +66,6 @@ const TrashList: React.FC<TrashListProps> = ({ onRestore }) => {
       console.error('Erro ao excluir:', error);
     } finally {
       setDeletingId(null);
-      setConfirmDeleteId(null);
     }
   };
 
@@ -112,11 +116,6 @@ const TrashList: React.FC<TrashListProps> = ({ onRestore }) => {
                       <span className="text-xs text-gray-500">
                         {new Date(item.deleted_at).toLocaleString('pt-BR')}
                       </span>
-                      {item.source === 'rpc' && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 text-gray-500 border border-gray-200">
-                           RPC
-                        </span>
-                      )}
                    </div>
                    <h4 className="font-semibold text-gray-900">{getItemName(item)}</h4>
                    <div className="text-xs text-gray-500 mt-1">

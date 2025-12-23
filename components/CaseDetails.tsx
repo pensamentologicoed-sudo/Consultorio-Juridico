@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from 'react';
+
+import React, { useEffect, useState, useMemo } from 'react';
 import { 
   ArrowLeft, Calendar, User, Scale, DollarSign, 
   FileText, Gavel, Send, Clock, Plus, Trash2, 
-  MoreVertical, CheckCircle2, AlertCircle, Phone, Mail, X
+  CheckCircle2, AlertCircle, Phone, Mail, X,
+  Archive, Award, UserPlus, FileSignature, Loader2,
+  Box, CheckSquare, History
 } from 'lucide-react';
-import { LegalCase, CaseHistoryItem, HistoryType, Client } from '../types';
+import { LegalCase, CaseHistoryItem, HistoryType, Client, CaseStatus, CaseOutcome } from '../types';
 import { useCaseHistory } from '../hooks/useCaseHistory';
 import { supabase } from '../services/supabaseClient';
 
@@ -19,11 +22,10 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ legalCase, onBack, onEdit }) 
   const [clientDetails, setClientDetails] = useState<Client | null>(null);
   const [isAddingNote, setIsAddingNote] = useState(false);
   
-  // Form State for History
-  const [newItemType, setNewItemType] = useState<HistoryType>(HistoryType.NOTE);
   const [newItemTitle, setNewItemTitle] = useState('');
   const [newItemDesc, setNewItemDesc] = useState('');
   const [newItemDate, setNewItemDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newItemType, setNewItemType] = useState<HistoryType>(HistoryType.NOTE);
 
   useEffect(() => {
     fetchHistory();
@@ -36,304 +38,234 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ legalCase, onBack, onEdit }) 
     if (data) setClientDetails(data);
   };
 
+  const getOutcomeLabel = (outcome: CaseOutcome | null | undefined) => {
+    switch (outcome) {
+      case CaseOutcome.WON: return 'Procedente (Ganho)';
+      case CaseOutcome.LOST: return 'Improcedente (Perdido)';
+      case CaseOutcome.SETTLED: return 'Acordo Consensual';
+      default: return 'Em Andamento';
+    }
+  };
+
+  const unifiedTimeline = useMemo(() => {
+    const events: CaseHistoryItem[] = [...history];
+
+    if (clientDetails?.created_at) {
+        events.push({
+            id: 'auto-client-creation',
+            case_id: legalCase.id,
+            title: 'Início do Relacionamento',
+            description: `Cadastro inicial do cliente ${clientDetails.name}.`,
+            type: HistoryType.SYSTEM,
+            date: clientDetails.created_at,
+            created_at: clientDetails.created_at,
+            is_system_event: true
+        });
+    }
+
+    events.push({
+        id: 'auto-case-creation',
+        case_id: legalCase.id,
+        title: 'Distribuição / Abertura',
+        description: `Processo registrado no sistema.`,
+        type: HistoryType.PETITION,
+        date: legalCase.created_at,
+        created_at: legalCase.created_at,
+        is_system_event: true
+    });
+
+    if (legalCase.next_hearing) {
+        events.push({
+            id: 'auto-hearing-scheduled',
+            case_id: legalCase.id,
+            title: 'Audiência / Reunião',
+            description: `Agendada para ${new Date(legalCase.next_hearing).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}.`,
+            type: HistoryType.HEARING,
+            date: legalCase.next_hearing,
+            created_at: legalCase.next_hearing,
+            is_system_event: true
+        });
+    }
+
+    if (legalCase.outcome) {
+        const isSettled = legalCase.outcome === CaseOutcome.SETTLED;
+        events.push({
+            id: 'auto-case-outcome',
+            case_id: legalCase.id,
+            title: isSettled ? 'Acordo Formalizado' : 'Sentença Proferida',
+            description: `Desfecho: ${getOutcomeLabel(legalCase.outcome)}.`,
+            type: isSettled ? HistoryType.SETTLEMENT : HistoryType.SENTENCE,
+            date: legalCase.updated_at,
+            created_at: legalCase.updated_at,
+            is_system_event: true
+        });
+    }
+
+    return events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [history, legalCase, clientDetails]);
+
   const handleAddHistory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemTitle) return;
-
-    const result = await addHistoryItem({
-        title: newItemTitle,
-        description: newItemDesc,
-        type: newItemType,
-        date: newItemDate
-    });
-
+    const result = await addHistoryItem({ title: newItemTitle, description: newItemDesc, type: newItemType, date: newItemDate });
     if (result.success) {
         setIsAddingNote(false);
         setNewItemTitle('');
         setNewItemDesc('');
         setNewItemType(HistoryType.NOTE);
-    } else {
-        alert("Erro ao adicionar: " + result.error);
     }
   };
 
   const getTypeIcon = (type: HistoryType) => {
     switch (type) {
-        case HistoryType.PETITION: return <FileText className="w-4 h-4 text-blue-600" />;
-        case HistoryType.SENTENCE: return <Gavel className="w-4 h-4 text-red-600" />;
-        case HistoryType.APPEAL: return <Scale className="w-4 h-4 text-purple-600" />;
-        case HistoryType.HEARING: return <Calendar className="w-4 h-4 text-orange-600" />;
-        case HistoryType.STATUS_CHANGE: return <CheckCircle2 className="w-4 h-4 text-green-600" />;
-        default: return <Clock className="w-4 h-4 text-gray-500" />;
+        case HistoryType.PETITION: return <FileText className="w-3.5 h-3.5" />;
+        case HistoryType.SENTENCE: return <Gavel className="w-3.5 h-3.5" />;
+        case HistoryType.HEARING: return <Calendar className="w-3.5 h-3.5" />;
+        case HistoryType.SETTLEMENT: return <Award className="w-3.5 h-3.5" />;
+        case HistoryType.ARCHIVE: return <Box className="w-3.5 h-3.5" />;
+        default: return <Clock className="w-3.5 h-3.5" />;
     }
-  };
-
-  const getTypeLabel = (type: HistoryType) => {
-      switch(type) {
-          case HistoryType.PETITION: return "Petição";
-          case HistoryType.SENTENCE: return "Sentença";
-          case HistoryType.APPEAL: return "Recurso";
-          case HistoryType.HEARING: return "Audiência";
-          case HistoryType.STATUS_CHANGE: return "Status";
-          case HistoryType.NOTE: return "Nota";
-          default: return "Evento";
-      }
   };
 
   const getTypeColor = (type: HistoryType) => {
     switch(type) {
-        case HistoryType.PETITION: return "bg-blue-100 text-blue-800";
-        case HistoryType.SENTENCE: return "bg-red-100 text-red-800";
-        case HistoryType.APPEAL: return "bg-purple-100 text-purple-800";
-        case HistoryType.HEARING: return "bg-orange-100 text-orange-800";
-        default: return "bg-gray-100 text-gray-800";
+        case HistoryType.SENTENCE: return "text-yellow-600 bg-yellow-50";
+        case HistoryType.HEARING: return "text-orange-600 bg-orange-50";
+        case HistoryType.SETTLEMENT: return "text-emerald-600 bg-emerald-50";
+        case HistoryType.PETITION: return "text-blue-600 bg-blue-50";
+        default: return "text-gray-500 bg-gray-50";
     }
   };
 
   return (
-    <div className="space-y-6 animate-in slide-in-from-right duration-300">
-      
-      {/* Header & Nav */}
+    <div className="space-y-6 animate-in slide-in-from-right duration-500">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-            <button onClick={onBack} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-600">
-                <ArrowLeft className="w-6 h-6" />
+            <button onClick={onBack} className="p-3 bg-white hover:bg-gray-100 rounded-2xl shadow-sm border border-gray-100 transition-all text-gray-500">
+                <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-                <div className="flex items-center gap-3">
-                    <h1 className="text-2xl font-bold text-gray-900 line-clamp-1">{legalCase.title}</h1>
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium uppercase border ${
-                        legalCase.status === 'open' ? 'bg-green-50 text-green-700 border-green-200' :
-                        legalCase.status === 'closed' ? 'bg-gray-100 text-gray-600 border-gray-200' :
-                        'bg-yellow-50 text-yellow-700 border-yellow-200'
-                    }`}>
-                        {legalCase.status === 'in_progress' ? 'Em Andamento' : legalCase.status === 'open' ? 'Aberto' : 'Fechado'}
-                    </span>
-                </div>
-                <p className="text-sm text-gray-500 mt-1">Processo nº: <span className="font-mono text-gray-700">{legalCase.case_number}</span></p>
+                <h1 className="text-xl font-black text-gray-900 tracking-tight leading-none uppercase">{legalCase.title}</h1>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">PROCESSO: {legalCase.case_number}</p>
             </div>
         </div>
-        <div className="flex gap-2">
-            <button onClick={onEdit} className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
-                Editar Dados
-            </button>
-        </div>
+        <button onClick={onEdit} className="px-5 py-2.5 text-[10px] font-black uppercase tracking-widest text-brand-gold bg-[#131313] rounded-xl border border-brand-gold/20 shadow-xl">
+            Ajustar Dados
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Left Column: Info Cards */}
-        <div className="space-y-6">
-            
-            {/* Client Card */}
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4 flex items-center">
-                    <User className="w-4 h-4 mr-2 text-gray-400" />
-                    Cliente
-                </h3>
-                {clientDetails ? (
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0">
-                                {clientDetails.name.charAt(0)}
-                            </div>
-                            <div className="overflow-hidden">
-                                <p className="font-medium text-gray-900 truncate" title={clientDetails.name}>{clientDetails.name}</p>
-                                <p className="text-xs text-gray-500">{clientDetails.status === 'active' ? 'Cliente Ativo' : 'Inativo'}</p>
-                            </div>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="lg:col-span-1 space-y-4">
+            <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-gray-100">
+                <h3 className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">Cliente</h3>
+                {clientDetails && (
+                    <div className="flex items-center gap-4">
+                        <div className="h-12 w-12 rounded-2xl bg-[#131313] flex items-center justify-center text-brand-gold font-black text-lg border border-brand-gold/30 shadow-lg">
+                            {clientDetails.name.charAt(0)}
                         </div>
-                        <div className="pt-3 border-t border-gray-100 space-y-2 text-sm">
-                            <div className="flex items-center text-gray-600">
-                                <Phone className="w-3.5 h-3.5 mr-2 text-gray-400" />
-                                {clientDetails.phone || 'Sem telefone'}
-                            </div>
-                            <div className="flex items-center text-gray-600">
-                                <Mail className="w-3.5 h-3.5 mr-2 text-gray-400" />
-                                <span className="truncate">{clientDetails.email || 'Sem email'}</span>
-                            </div>
+                        <div className="overflow-hidden">
+                            <p className="font-black text-gray-900 truncate text-sm tracking-tight">{clientDetails.name}</p>
+                            <p className="text-[9px] text-brand-gold font-bold uppercase tracking-widest">{clientDetails.phone}</p>
                         </div>
                     </div>
-                ) : (
-                    <div className="text-sm text-gray-500 italic">Carregando dados do cliente...</div>
                 )}
             </div>
-
-            {/* Financial & Status Card */}
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4 flex items-center">
-                    <Scale className="w-4 h-4 mr-2 text-gray-400" />
-                    Dados do Caso
-                </h3>
+            <div className="bg-[#131313] p-6 rounded-[2rem] shadow-2xl border border-brand-gold/10">
+                <h3 className="text-[9px] font-black text-brand-gold/50 uppercase tracking-[0.2em] mb-4">Financeiro</h3>
                 <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-gray-50 p-3 rounded-lg">
-                            <p className="text-xs text-gray-500 mb-1">Valor da Causa</p>
-                            <p className="font-semibold text-gray-900">
-                                {legalCase.value ? legalCase.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
-                            </p>
-                        </div>
-                        <div className="bg-green-50 p-3 rounded-lg">
-                            <p className="text-xs text-green-600 mb-1">Honorários</p>
-                            <p className="font-semibold text-green-700">
-                                {legalCase.fee ? legalCase.fee.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
-                            </p>
-                        </div>
+                    <div>
+                        <p className="text-[8px] text-white/40 font-black uppercase tracking-widest">Valor Causa</p>
+                        <p className="text-md font-black text-white">{legalCase.value?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) || 'R$ 0,00'}</p>
                     </div>
-                    
-                    <div className="pt-2">
-                         <p className="text-xs text-gray-500 mb-1">Área / Tipo</p>
-                         <div className="flex gap-2">
-                             <span className="px-2 py-1 bg-gray-100 rounded text-xs text-gray-700 font-medium">{legalCase.case_type}</span>
-                             <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                 legalCase.priority === 'urgent' ? 'bg-red-100 text-red-700' : 'bg-blue-50 text-blue-700'
-                             }`}>
-                                 Prioridade {legalCase.priority === 'urgent' ? 'Urgente' : legalCase.priority === 'high' ? 'Alta' : 'Normal'}
-                             </span>
-                         </div>
+                    <div>
+                        <p className="text-[8px] text-brand-gold/40 font-black uppercase tracking-widest">Honorários</p>
+                        <p className="text-md font-black text-brand-gold">{legalCase.fee?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) || 'R$ 0,00'}</p>
                     </div>
-
-                    {legalCase.outcome && (
-                        <div className={`p-3 rounded-lg border flex items-center gap-3 ${
-                            legalCase.outcome === 'won' ? 'bg-green-50 border-green-200' : 
-                            legalCase.outcome === 'lost' ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'
-                        }`}>
-                             {legalCase.outcome === 'won' ? <CheckCircle2 className="text-green-600 w-5 h-5"/> : <AlertCircle className="text-red-500 w-5 h-5"/>}
-                             <div>
-                                 <p className="text-xs font-bold uppercase opacity-70">Resultado</p>
-                                 <p className="text-sm font-semibold capitalize">
-                                     {legalCase.outcome === 'won' ? 'Causa Ganha' : legalCase.outcome === 'lost' ? 'Causa Perdida' : 'Acordo'}
-                                 </p>
-                             </div>
-                        </div>
-                    )}
+                    <div>
+                        <p className="text-[8px] text-white/40 font-black uppercase tracking-widest">Resultado</p>
+                        <p className={`text-[10px] font-black uppercase tracking-widest mt-1 ${legalCase.outcome === CaseOutcome.WON ? 'text-green-400' : legalCase.outcome === CaseOutcome.LOST ? 'text-red-400' : 'text-brand-gold'}`}>
+                            {getOutcomeLabel(legalCase.outcome)}
+                        </p>
+                    </div>
                 </div>
             </div>
-
-            {legalCase.description && (
-                <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-                    <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-2">Descrição</h3>
-                    <p className="text-sm text-gray-600 leading-relaxed">{legalCase.description}</p>
-                </div>
-            )}
         </div>
 
-        {/* Right Column: Timeline */}
-        <div className="lg:col-span-2 space-y-4">
-             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px] flex flex-col">
-                 <div className="p-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                     <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                         <Clock className="w-5 h-5 text-blue-600" />
-                         Linha do Tempo e Andamentos
+        <div className="lg:col-span-3">
+             <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[650px]">
+                 <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-gray-50/20">
+                     <h3 className="font-black text-gray-900 text-sm flex items-center uppercase tracking-[0.2em]">
+                        <History className="w-4 h-4 text-brand-gold mr-3" />
+                        Cronologia Processual
                      </h3>
                      <button 
                         onClick={() => setIsAddingNote(!isAddingNote)}
-                        className={`text-sm font-medium flex items-center gap-1 transition-colors ${
-                            isAddingNote ? 'text-gray-500' : 'text-blue-600 hover:text-blue-700'
+                        className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
+                            isAddingNote ? 'bg-gray-100 text-gray-500' : 'bg-[#131313] text-brand-gold'
                         }`}
                      >
-                         {isAddingNote ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                         {isAddingNote ? 'Cancelar' : 'Adicionar Andamento'}
+                         {isAddingNote ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                         {isAddingNote ? 'Cancelar' : 'Novo Registro'}
                      </button>
                  </div>
 
-                 {/* Add Update Form */}
                  {isAddingNote && (
-                     <div className="p-5 border-b border-gray-100 bg-blue-50/50 animate-in slide-in-from-top-2">
-                         <form onSubmit={handleAddHistory} className="space-y-3">
-                             <div className="flex gap-3">
-                                 <select 
-                                    className="block w-1/3 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                                    value={newItemType}
-                                    onChange={(e) => setNewItemType(e.target.value as HistoryType)}
-                                 >
+                     <div className="p-8 border-b border-gray-100 bg-brand-gold/5 animate-in slide-in-from-top-4">
+                         <form onSubmit={handleAddHistory} className="space-y-4">
+                             <div className="grid grid-cols-3 gap-4">
+                                 {/* Fix: use setNewItemTitle instead of calling newItemTitle directly */}
+                                 <input type="text" placeholder="Título do Registro..." className="col-span-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold" value={newItemTitle} onChange={(e) => setNewItemTitle(e.target.value)}/>
+                                 {/* Fix: use setNewItemDate instead of calling newItemDate directly */}
+                                 <input type="date" className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs" value={newItemDate} onChange={(e) => setNewItemDate(e.target.value)}/>
+                             </div>
+                             <div className="flex gap-4 items-center">
+                                 <select className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-[10px] font-black uppercase" value={newItemType} onChange={(e) => setNewItemType(e.target.value as HistoryType)}>
                                      <option value={HistoryType.NOTE}>Nota Interna</option>
-                                     <option value={HistoryType.PETITION}>Petição</option>
-                                     <option value={HistoryType.APPEAL}>Recurso</option>
+                                     <option value={HistoryType.DISPATCH}>Despacho</option>
                                      <option value={HistoryType.SENTENCE}>Sentença</option>
                                      <option value={HistoryType.HEARING}>Audiência</option>
                                  </select>
-                                 <input 
-                                    type="date"
-                                    className="block w-1/3 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                                    value={newItemDate}
-                                    onChange={(e) => setNewItemDate(e.target.value)}
-                                 />
-                             </div>
-                             <input 
-                                type="text"
-                                placeholder="Título do andamento (ex: Petição Inicial Protocolada)"
-                                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm p-2"
-                                value={newItemTitle}
-                                onChange={(e) => setNewItemTitle(e.target.value)}
-                                autoFocus
-                             />
-                             <textarea 
-                                placeholder="Detalhes adicionais..."
-                                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm p-2"
-                                rows={2}
-                                value={newItemDesc}
-                                onChange={(e) => setNewItemDesc(e.target.value)}
-                             />
-                             <div className="flex justify-end pt-1">
-                                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 shadow-sm">
-                                     Salvar Registro
-                                 </button>
+                                 <button type="submit" className="px-8 py-2.5 bg-[#131313] text-brand-gold font-black uppercase text-[10px] tracking-widest rounded-xl">Registrar</button>
                              </div>
                          </form>
                      </div>
                  )}
 
-                 {/* Timeline List */}
-                 <div className="p-6 flex-1 overflow-y-auto">
-                     {history.length === 0 ? (
-                         <div className="h-full flex flex-col items-center justify-center text-gray-400 min-h-[200px]">
-                             <FileText className="w-12 h-12 mb-3 opacity-20" />
-                             <p className="text-sm">Nenhum andamento registrado ainda.</p>
-                         </div>
-                     ) : (
-                         <div className="relative border-l-2 border-gray-100 ml-3 space-y-8 pb-4">
-                             {history.map((item) => (
-                                 <div key={item.id} className="relative pl-8 group">
-                                     {/* Dot */}
-                                     <div className={`absolute -left-[9px] top-1 h-4 w-4 rounded-full border-2 border-white shadow-sm flex items-center justify-center ${
-                                         item.type === HistoryType.SENTENCE ? 'bg-red-500' : 
-                                         item.type === HistoryType.PETITION ? 'bg-blue-500' : 'bg-gray-300'
-                                     }`}></div>
-                                     
-                                     {/* Content */}
-                                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
-                                         <div>
-                                             <div className="flex items-center gap-2 mb-1">
-                                                 <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${getTypeColor(item.type)}`}>
-                                                     {getTypeLabel(item.type)}
-                                                 </span>
-                                                 <span className="text-xs text-gray-400">
-                                                     {new Date(item.date).toLocaleDateString('pt-BR')}
-                                                 </span>
-                                             </div>
-                                             <h4 className="text-base font-semibold text-gray-900">{item.title}</h4>
-                                             {item.description && (
-                                                 <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{item.description}</p>
-                                             )}
-                                         </div>
-                                         
-                                         {/* Actions */}
-                                         <button 
-                                            onClick={() => deleteHistoryItem(item.id)}
-                                            className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-600 rounded transition-all"
-                                            title="Remover"
-                                         >
-                                             <Trash2 className="w-4 h-4" />
-                                         </button>
-                                     </div>
+                 <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-gray-50/20">
+                     <div className="space-y-2">
+                         {unifiedTimeline.map((item) => (
+                             <div key={item.id} className="flex gap-8 group">
+                                 <div className="w-20 shrink-0 text-right pt-2">
+                                     <p className="text-[12px] font-black text-gray-900 leading-none">{new Date(item.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</p>
+                                     <p className="text-[9px] font-black text-gray-300 uppercase mt-1 tracking-widest">{new Date(item.date).getFullYear()}</p>
                                  </div>
-                             ))}
-                         </div>
-                     )}
+                                 <div className="relative flex flex-col items-center">
+                                     <div className={`w-3.5 h-3.5 rounded-full mt-2.5 z-10 border-2 border-white shadow-md bg-brand-gold`}></div>
+                                     <div className="w-0.5 h-full bg-gray-200 absolute top-2.5"></div>
+                                 </div>
+                                 <div className="flex-1 pb-10 pt-1">
+                                     <div className="flex items-center justify-between">
+                                         <div className="flex items-center gap-3">
+                                             <div className={`p-1.5 rounded-lg ${getTypeColor(item.type)}`}>{getTypeIcon(item.type)}</div>
+                                             <h4 className="text-sm font-black text-gray-800 uppercase tracking-tight">
+                                                 {item.title}
+                                                 {item.is_system_event && <span className="ml-3 text-[8px] text-brand-gold/60 font-black uppercase tracking-[0.2em]">[Auto]</span>}
+                                             </h4>
+                                         </div>
+                                         {!item.is_system_event && (
+                                             <button onClick={() => deleteHistoryItem(item.id)} className="opacity-0 group-hover:opacity-100 p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4 h-4" /></button>
+                                         )}
+                                     </div>
+                                     {item.description && (
+                                         <p className="text-[12px] text-gray-500 font-medium mt-3 pl-8 border-l-2 border-brand-gold/10 ml-3.5 leading-relaxed italic">{item.description}</p>
+                                     )}
+                                 </div>
+                             </div>
+                         ))}
+                     </div>
                  </div>
              </div>
         </div>
-
       </div>
     </div>
   );
